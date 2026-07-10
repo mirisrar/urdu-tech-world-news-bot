@@ -41,6 +41,8 @@ ${title}`
   );
 
   const data = await response.json();
+  console.log("GEMINI DATA:");
+  console.log(JSON.stringify(data, null, 2));
 
   return (
     data?.candidates?.[0]?.content?.parts?.[0]?.text || ""
