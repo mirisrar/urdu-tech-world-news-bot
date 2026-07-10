@@ -27,6 +27,8 @@ CATEGORY: Technology
 URDU_TITLE: Urdu headline
 URDU_SUMMARY: Two sentence Urdu summary
 HASHTAGS: #News #Technology
+FACEBOOK_POST: Complete Facebook post in Urdu
+IMAGE_PROMPT: Professional AI image prompt
 
 Headline:
 ${title}`
@@ -41,8 +43,7 @@ ${title}`
   const data = await response.json();
 
   return (
-    data?.candidates?.[0]?.content?.parts?.[0]?.text ||
-    ""
+    data?.candidates?.[0]?.content?.parts?.[0]?.text || ""
   );
 }
 
@@ -77,6 +78,12 @@ async function run() {
   const hashtags =
     aiText.match(/HASHTAGS:\s*(.*)/i)?.[1]?.trim() || "";
 
+  const facebookPost =
+    aiText.match(/FACEBOOK_POST:\s*(.*)/i)?.[1]?.trim() || "";
+
+  const imagePrompt =
+    aiText.match(/IMAGE_PROMPT:\s*(.*)/i)?.[1]?.trim() || "";
+
   const { error } = await supabase
     .from("news")
     .insert({
@@ -86,13 +93,15 @@ async function run() {
       category: category,
       urdu_title: urduTitle,
       urdu_summary: urduSummary,
-      hashtags: hashtags
+      hashtags: hashtags,
+      facebook_post: facebookPost,
+      image_prompt: imagePrompt
     });
 
   if (error) {
     console.log(error);
   } else {
-    console.log("News saved with AI analysis");
+    console.log("News saved with full AI analysis");
   }
 }
 
