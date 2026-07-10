@@ -70,7 +70,7 @@ async function run() {
       url: item.link,
       urdu_title: urduTitle,
       urdu_summary: urduSummary
-    }
+    });
 
   if (error) {
     console.log(error);
