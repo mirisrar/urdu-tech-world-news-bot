@@ -63,7 +63,7 @@ async function run() {
 
   if (existing && existing.length > 0) {
     console.log("Already exists");
-    return;
+    //return;
   }
 
   const aiText = await analyzeNews(item.title);
