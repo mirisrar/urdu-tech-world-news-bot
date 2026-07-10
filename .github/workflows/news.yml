@@ -18,5 +18,6 @@ jobs:
 
       - run: node index.js
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_URL: ${{ https://afrwjstlffvsueqjtjyd.supabase.co }}
+          SUPABASE_ANON_KEY: ${{ sb_publishable__oS9ZaaFhADPdUeItOQ-qg_UEZT-GMh }}
+          GEMINI_API_KEY: ${{ AQ.Ab8RN6I58G56QKGyUQu4uNZTUgoa4C0bvekOQDIzTZCISYKgnQ }}
