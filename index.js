@@ -66,6 +66,7 @@ async function run() {
 
   const aiText = await analyzeNews(item.title);
   console.log(aiText);
+  console.log("AI RESPONSE:");
 
   const category =
     aiText.match(/CATEGORY:\s*(.*)/i)?.[1]?.trim() || "General";
