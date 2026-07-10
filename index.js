@@ -8,7 +8,7 @@ const supabase = createClient(
   process.env.SUPABASE_ANON_KEY
 );
 
-async function translateToUrdu(title) {
+async function analyzeNews(title) {
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
     {
@@ -21,7 +21,15 @@ async function translateToUrdu(title) {
           {
             parts: [
               {
-                text: `Translate this news headline into professional Urdu and write a 2 sentence Urdu summary:\n\n${title}`
+                text: `Analyze this news headline and return EXACTLY in this format:
+
+CATEGORY: Technology
+URDU_TITLE: Urdu headline
+URDU_SUMMARY: Two sentence Urdu summary
+HASHTAGS: #News #Technology
+
+Headline:
+${title}`
               }
             ]
           }
@@ -34,7 +42,7 @@ async function translateToUrdu(title) {
 
   return (
     data?.candidates?.[0]?.content?.parts?.[0]?.text ||
-    "ترجمہ دستیاب نہیں"
+    ""
   );
 }
 
@@ -55,12 +63,19 @@ async function run() {
     return;
   }
 
-  const urduText = await translateToUrdu(item.title);
+  const aiText = await analyzeNews(item.title);
 
-  const lines = urduText.split("\n");
+  const category =
+    aiText.match(/CATEGORY:\s*(.*)/i)?.[1]?.trim() || "General";
 
-  const urduTitle = lines[0] || "";
-  const urduSummary = lines.slice(1).join(" ");
+  const urduTitle =
+    aiText.match(/URDU_TITLE:\s*(.*)/i)?.[1]?.trim() || "";
+
+  const urduSummary =
+    aiText.match(/URDU_SUMMARY:\s*(.*)/i)?.[1]?.trim() || "";
+
+  const hashtags =
+    aiText.match(/HASHTAGS:\s*(.*)/i)?.[1]?.trim() || "";
 
   const { error } = await supabase
     .from("news")
@@ -68,14 +83,16 @@ async function run() {
       title: item.title,
       source: "BBC",
       url: item.link,
+      category: category,
       urdu_title: urduTitle,
-      urdu_summary: urduSummary
+      urdu_summary: urduSummary,
+      hashtags: hashtags
     });
 
   if (error) {
     console.log(error);
   } else {
-    console.log("News saved with Urdu translation");
+    console.log("News saved with AI analysis");
   }
 }
 
