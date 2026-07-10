@@ -9,6 +9,8 @@ const supabase = createClient(
 );
 
 async function analyzeNews(title) {
+  console.log("KEY EXISTS:", !!process.env.GEMINI_API_KEY);
+  console.log("KEY LENGTH:", process.env.GEMINI_API_KEY?.length);
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent`,
     {
