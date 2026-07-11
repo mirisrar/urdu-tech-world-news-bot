@@ -82,9 +82,12 @@ ${title}`
   const urduSummary =
     aiText.match(/URDU_SUMMARY:\s*(.*)/i)?.[1]?.trim() || "";
   
-    const article =
-  aiText.match(/ARTICLE:\s*([\s\S]*?)HASHTAGS:/i)?.[1]?.trim() || "";
+  const article =
+    aiText.match(/ARTICLE:\s*([\s\S]*?)HASHTAGS:/i)?.[1]?.trim() || "";
     
+    console.log("ARTICLE:");
+    console.log(article);
+  
   const hashtags =
     aiText.match(/HASHTAGS:\s*(.*)/i)?.[1]?.trim() || "";
 
