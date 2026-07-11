@@ -8,14 +8,16 @@ const supabase = createClient(
   process.env.SUPABASE_ANON_KEY
 );
 
-aasync function analyzeNews(title) {
+async function analyzeNews(title) {
+  console.log("GROQ KEY LENGTH:", process.env.GROQ_API_KEY?.length);
+
   const response = await fetch(
     "https://api.groq.com/openai/v1/chat/completions",
     {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${process.env.GROQ_API_KEY}`
+        Authorization: `Bearer ${process.env.GROQ_API_KEY}`
       },
       body: JSON.stringify({
         model: "llama-3.3-70b-versatile",
@@ -46,7 +48,6 @@ ${title}`
   console.log(JSON.stringify(data, null, 2));
 
   return data?.choices?.[0]?.message?.content || "";
-}
 }
 
 
