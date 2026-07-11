@@ -53,18 +53,6 @@ ${title}`
 
 
   async function run() {
-
-  const modelsResponse = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models?key=${process.env.GEMINI_API_KEY}`);
-
-  const modelsData = await modelsResponse.json();
-
-  console.log("AVAILABLE MODELS:");
-  console.log(JSON.stringify(modelsData, null, 2));
-
-  return;
-
-  // baqi code neeche rahega
   const feed = await parser.parseURL(
     "https://feeds.bbci.co.uk/news/rss.xml"
   );
