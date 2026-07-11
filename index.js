@@ -103,6 +103,7 @@ ${title}`
       category: category,
       urdu_title: urduTitle,
       urdu_summary: urduSummary,
+      article: article,
       hashtags: hashtags,
       facebook_post: facebookPost,
       image_prompt: imagePrompt
