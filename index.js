@@ -8,20 +8,21 @@ const supabase = createClient(
   process.env.SUPABASE_ANON_KEY
 );
 
-async function analyzeNews(title) {
+aasync function analyzeNews(title) {
   const response = await fetch(
     "https://api.groq.com/openai/v1/chat/completions",
-    {    
-  method: "POST",
+    {
+      method: "POST",
       headers: {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${process.env.GROQ_API_KEY}`
       },
       body: JSON.stringify({
-        contents: [
+        model: "llama-3.3-70b-versatile",
+        messages: [
           {
-            parts: [
-              {
-                text: `Analyze this news headline and return EXACTLY in this format:
+            role: "user",
+            content: `Analyze this news headline and return EXACTLY in this format:
 
 CATEGORY: Technology
 URDU_TITLE: Urdu headline
@@ -32,22 +33,20 @@ IMAGE_PROMPT: Professional AI image prompt
 
 Headline:
 ${title}`
-              }
-            ]
           }
-        ]
+        ],
+        temperature: 0.7
       })
     }
   );
 
   const data = await response.json();
+
   console.log("GROQ DATA:");
   console.log(JSON.stringify(data, null, 2));
-  return data?.choices?.[0]?.message?.content || "";
 
-  return (
-    data?.candidates?.[0]?.content?.parts?.[0]?.text || ""
-  );
+  return data?.choices?.[0]?.message?.content || "";
+}
 }
 
 
