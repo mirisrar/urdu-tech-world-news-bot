@@ -12,8 +12,8 @@ async function analyzeNews(title) {
   console.log("KEY EXISTS:", !!process.env.GEMINI_API_KEY);
   console.log("KEY LENGTH:", process.env.GEMINI_API_KEY?.length);
   const response = await fetch(
-  `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
-  {    
+    "https://api.groq.com/openai/v1/chat/completions",
+    {    
   method: "POST",
       headers: {
         "Content-Type": "application/json"
@@ -43,9 +43,9 @@ ${title}`
   );
 
   const data = await response.json();
-  console.log("STATUS:", response.status);
-  console.log("GEMINI DATA:");
+  console.log("GROQ DATA:");
   console.log(JSON.stringify(data, null, 2));
+  return data?.choices?.[0]?.message?.content || "";
 
   return (
     data?.candidates?.[0]?.content?.parts?.[0]?.text || ""
