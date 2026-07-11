@@ -29,8 +29,8 @@ async function analyzeNews(title) {
 CATEGORY: Technology
 URDU_TITLE: Urdu headline
 URDU_SUMMARY: Two sentence Urdu summary
-HASHTAGS: #News #Technology
 ARTICLE: 300 word detailed Urdu article
+HASHTAGS: #News #Technology
 FACEBOOK_POST: Complete Facebook post in Urdu
 IMAGE_PROMPT: Professional AI image prompt
 
@@ -83,10 +83,10 @@ ${title}`
     aiText.match(/URDU_SUMMARY:\s*(.*)/i)?.[1]?.trim() || "";
   
   const article =
-    aiText.match(/ARTICLE:\s*([\s\S]*?)HASHTAGS:/i)?.[1]?.trim() || "";
-    
-    console.log("ARTICLE:");
-    console.log(article);
+  aiText.match(/ARTICLE:\s*([\s\S]*?)FACEBOOK_POST:/i)?.[1]?.trim() || "";
+
+  console.log("ARTICLE:");
+  console.log(article);
   
   const hashtags =
     aiText.match(/HASHTAGS:\s*(.*)/i)?.[1]?.trim() || "";
