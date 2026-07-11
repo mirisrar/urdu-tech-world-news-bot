@@ -51,12 +51,11 @@ ${title}`
   );
 }
 
-async function run() {
+
   async function run() {
 
   const modelsResponse = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models?key=${process.env.GEMINI_API_KEY}`
-  );
+    `https://generativelanguage.googleapis.com/v1beta/models?key=${process.env.GEMINI_API_KEY}`);
 
   const modelsData = await modelsResponse.json();
 
