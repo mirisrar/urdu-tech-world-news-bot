@@ -9,8 +9,6 @@ const supabase = createClient(
 );
 
 async function analyzeNews(title) {
-  console.log("KEY EXISTS:", !!process.env.GEMINI_API_KEY);
-  console.log("KEY LENGTH:", process.env.GEMINI_API_KEY?.length);
   const response = await fetch(
     "https://api.groq.com/openai/v1/chat/completions",
     {    
