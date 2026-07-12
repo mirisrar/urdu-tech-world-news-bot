@@ -109,7 +109,9 @@ ${title}`
       article: article,
       hashtags: hashtags,
       facebook_post: facebookPost,
-      image_prompt: imagePrompt
+      image_prompt: imagePrompt,
+      image_url:
+        `https://image.pollinations.ai/prompt/${encodeURIComponent(imagePrompt)}`
     });
 
   if (error) {
