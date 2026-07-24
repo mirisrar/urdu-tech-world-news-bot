@@ -43,6 +43,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). Versions abhi 
 - Verified request format against the real platform APIs using fake-but-well-formed credentials: Facebook/WhatsApp return real "Invalid OAuth access token" errors, Telegram returns real 401 Unauthorized, and X's manually OAuth1.0a-signed request reaches Twitter's server and gets a proper 401 (not a malformed-request rejection) — confirming the signing implementation is structurally correct. Actual publish success was not tested (no real platform credentials available).
 - **Also fixed**: `.github/workflows/news.yml` was missing the `env:` entries for `NEWS_API_KEY` and all Phase 4 publisher secrets — meaning even if those GitHub Actions secrets were added, they'd never reach `node index.js` in production. Fixed across the NewsAPI and Phase 4 branches.
 
+### Added (Phase 5 — Image Pipeline)
+- New `imagePipeline.js` (`getArticleImageUrl()`): downloads the AI-generated image from Pollinations.ai, optimizes it with `sharp` (resized/cropped to 1200x630, re-encoded as WebP quality 80), and uploads it to Supabase Storage (`SUPABASE_STORAGE_BUCKET`, default `news-images`), returning the permanent public URL.
+- 4-level graceful fallback: permanent Storage URL → raw Pollinations.ai URL (pre-Phase-5 behavior) → `DEFAULT_FALLBACK_IMAGE_URL` (if configured) → empty string. Never throws — a bad image never blocks saving or publishing an article.
+- New `sharp` dependency (image processing).
+- Verified live against the real Pollinations.ai API (download + optimize) and against a real-but-nonexistent Supabase project (Storage-upload-failure fallback). Actual successful Storage upload not live-tested — no real bucket was available in the dev environment.
+- **Design note**: reuses the existing `image_url` column directly (overwritten with the best available URL) instead of adding a separate `stored_image_url` column as originally proposed.
+- **Also fixed**: applied the Phase 4 lesson proactively — the two new optional env vars (`SUPABASE_STORAGE_BUCKET`, `DEFAULT_FALLBACK_IMAGE_URL`) were added to `.github/workflows/news.yml`'s `env:` block in the same change that introduced them.
+
 ### Fixed (Phase 1 — Stability & Bug Fixes)
 - Duplicate news items are now actually skipped (previously detected but the skip `return` was commented out).
 - Bot now processes up to 5 fresh RSS items per run instead of only `feed.items[0]`.

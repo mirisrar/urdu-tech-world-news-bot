@@ -18,6 +18,7 @@ The current `index.js` previously logged `GROQ_API_KEY?.length` and dumped the f
   - **Write/insert** access should be restricted — ideally the bot uses a more privileged key (e.g. `service_role`, kept server-side/in Actions secrets only, never exposed to any frontend) rather than the anon key, once a website/dashboard is added.
 - Add a **unique constraint on `url`** at the DB level (defense in depth beyond application-level duplicate checks — see `DATABASE_SCHEMA.md`).
 - Never expose `SUPABASE_SERVICE_ROLE_KEY` (if adopted later) to any client-side/browser code — only server-side (Actions, API routes).
+- **Storage bucket (Phase 5)**: the `news-images` (or configured `SUPABASE_STORAGE_BUCKET`) bucket must be **public for reads** (so image URLs work in Facebook/Telegram/website previews) but should have a scoped **insert/upload policy** — only the bot's key needs upload permission, not arbitrary public writes. Review the bucket's storage policies in the Supabase dashboard; don't leave it open to public writes just because reads need to be public.
 
 ## 3. Third-Party API Keys (Phase 4 — done)
 

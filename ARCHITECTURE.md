@@ -37,9 +37,11 @@
                                │
                                ▼
                     ┌──────────────────────┐
-                    │   Image Pipeline       │  (Phase 5)
-                    │  - generate image      │
+                    │   Image Pipeline       │  (✅ Phase 5 done)
+                    │  - download image      │
+                    │  - optimize (sharp)    │
                     │  - store permanently   │
+                    │    (Supabase Storage)  │
                     └──────────┬────────────┘
                                │
                                ▼
@@ -73,8 +75,8 @@ Queries Supabase `news` table by `url` before processing, to avoid reprocessing/
 ### 3. AI Processor
 Sends the headline to Google's Gemini API (`gemini-3.5-flash-lite`) with a prompt and a `responseSchema` (Phase 3), requesting category, Urdu title/summary/article, an SEO title, hashtags, Facebook post text, and an image prompt as strict structured JSON — Gemini's own API enforces the shape, so the bot just does `JSON.parse` (no more regex). See `AI_PIPELINE.md` for why Gemini was chosen over Groq (which this project used until this migration) and how schema correctness was verified.
 
-### 4. Image Pipeline (planned — Phase 5)
-Currently constructs an on-the-fly `pollinations.ai` URL from the AI's image prompt (not downloaded/stored). Phase 5 adds downloading, optimizing, and storing images permanently (Supabase Storage or similar).
+### 4. Image Pipeline (✅ Phase 5 done)
+`imagePipeline.js` downloads the AI-generated image from Pollinations.ai, optimizes it with `sharp` (1200x630, WebP), and uploads it to Supabase Storage — the resulting permanent public URL becomes the article's `image_url`. Falls back gracefully (raw Pollinations URL → configured default → empty) at every stage if storage isn't set up yet or a step fails. Requires a public Supabase Storage bucket to be created manually (see `DATABASE_SCHEMA.md`).
 
 ### 5. Database (Supabase)
 Single `news` table is the system's source of truth (see `DATABASE_SCHEMA.md`). All downstream consumers (website, social publishers, analytics) read from here — not from RSS/AI directly — to avoid duplicated logic.
@@ -98,4 +100,4 @@ Currently: a single GitHub Actions workflow (`news.yml`) runs `node index.js` ho
 
 ## Current Implementation vs. Target
 
-`index.js` (+ `newsapi.js` + `publishers/`) now implements Collector → Duplicate Check → AI Processor → Database → Social Media Publisher (Phases 1-4), across multiple sources and up to `MAX_ITEMS_PER_RUN` items per run. Remaining: Image Pipeline (Phase 5), Website (Phase 6), Admin Dashboard (Phase 7), Monitoring (Phase 8), Scale (Phase 9) — see `PROJECT_ROADMAP.md`.
+`index.js` (+ `newsapi.js` + `publishers/` + `imagePipeline.js`) now implements the full top-to-bottom pipeline — Collector → Duplicate Check → AI Processor → Image Pipeline → Database → Social Media Publisher (Phases 1-5) — across multiple sources and up to `MAX_ITEMS_PER_RUN` items per run. Remaining: Website (Phase 6), Admin Dashboard (Phase 7), Monitoring (Phase 8), Scale (Phase 9) — see `PROJECT_ROADMAP.md`.

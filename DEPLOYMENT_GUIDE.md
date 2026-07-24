@@ -14,18 +14,20 @@ Yeh project currently ek **serverless-style deployment** use kar raha hai — ko
 ### Setup Steps (for a new environment/fork)
 
 1. **Supabase project banao** (supabase.com) — `news` table create karo (see `DATABASE_SCHEMA.md`), aur `seo_title`/publish-status columns ke migrations run karo.
-2. **Gemini API key** generate karo (aistudio.google.com → "Get API key").
-3. GitHub repo Settings → Secrets and variables → Actions mein **required** secrets add karo:
+2. **Supabase Storage bucket banao** (Phase 5) — Storage → New bucket → naam `news-images` (ya jo bhi `SUPABASE_STORAGE_BUCKET` mein set karo) → **public** mark karo (see `DATABASE_SCHEMA.md`/`SECURITY_GUIDELINES.md` for read-public-but-restricted-write policy guidance).
+3. **Gemini API key** generate karo (aistudio.google.com → "Get API key").
+4. GitHub repo Settings → Secrets and variables → Actions mein **required** secrets add karo:
    - `SUPABASE_URL`
    - `SUPABASE_ANON_KEY`
    - `GEMINI_API_KEY`
-4. (Optional) Extra sources/channels chahiye to yeh bhi add karo — har ek independently optional hai, agar na add karo to us feature ke bina bot normally kaam karta rahega:
+5. (Optional) Extra sources/channels/storage config chahiye to yeh bhi add karo — har ek independently optional hai, agar na add karo to us feature ke bina bot normally kaam karta rahega:
    - `NEWS_API_KEY` (NewsAPI.org source)
    - `FACEBOOK_PAGE_ID`, `FACEBOOK_PAGE_ACCESS_TOKEN` (Facebook publishing)
    - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` (Telegram publishing)
    - `X_API_KEY`, `X_API_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_TOKEN_SECRET` (X/Twitter publishing)
    - `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_TEMPLATE_NAME`, `WHATSAPP_RECIPIENT_NUMBERS` (WhatsApp publishing — see `AI_PIPELINE.md`/`PROJECT_ROADMAP.md` Phase 4 for the important WhatsApp Channel-vs-template-message scope note)
-5. Workflow already configured hai — push karne par ya schedule par automatically chalega. Manual test: Actions tab → "News Bot" → "Run workflow".
+   - `SUPABASE_STORAGE_BUCKET` (agar step 2 mein default `news-images` ke ilawa koi aur naam use kiya ho), `DEFAULT_FALLBACK_IMAGE_URL` (last-resort image agar generation hi fail ho jaye)
+6. Workflow already configured hai — push karne par ya schedule par automatically chalega. Manual test: Actions tab → "News Bot" → "Run workflow".
 
 > **Migration note**: yeh project pehle Groq use karta tha, ab Gemini par migrate ho gaya hai (see `AI_PIPELINE.md` §"Why Gemini"). Agar aapke repo mein purana `GROQ_API_KEY` secret already set hai, usay `GEMINI_API_KEY` se replace/add karo — workflow ab isay use karta hai, `GROQ_API_KEY` ab redundant hai.
 

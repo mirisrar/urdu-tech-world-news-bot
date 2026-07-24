@@ -123,14 +123,20 @@ Yeh project ka core/differentiating feature hai — isay apna dedicated phase mi
 
 ---
 
-## Phase 5 — Image Pipeline — 🟡 Medium
+## Phase 5 — Image Pipeline — 🟡 Medium (✅ Implemented — see PR #7)
 
-- [ ] AI se generated image ko **download** karo aur Supabase Storage (ya CDN) mein permanently upload karo — abhi sirf on-the-fly pollinations.ai URL hai.
-- [ ] Image optimize/resize karo (web + social media dimensions ke mutabiq).
-- [ ] Fallback/default image agar generation fail ho.
-- [ ] Social posts aur website dono same stored image use karein.
+- [x] AI se generated image ko **download** karo aur Supabase Storage (ya CDN) mein permanently upload karo — abhi sirf on-the-fly pollinations.ai URL hai.
+- [x] Image optimize/resize karo (web + social media dimensions ke mutabiq).
+- [x] Fallback/default image agar generation fail ho.
+- [x] Social posts aur website dono same stored image use karein.
 
 **Done criteria**: Har processed news item ke saath ek stable, permanently-hosted, optimized image ho.
+
+**Status**: `imagePipeline.js` implemented — download (Pollinations.ai) → optimize (`sharp`: 1200x630, WebP quality 80) → upload (Supabase Storage). 4-level graceful fallback chain (permanent URL → raw Pollinations URL → configured default → empty string), never throws. Download+optimize verified live against the real Pollinations API; Storage-upload path verified to fall back gracefully when the target project/bucket doesn't exist. **Actual successful Storage upload not live-tested** — no real Supabase Storage bucket was available in the dev environment.
+
+**⚠️ Action needed — Supabase Storage bucket**: create a **public** bucket (default name `news-images`, configurable via `SUPABASE_STORAGE_BUCKET`) in your Supabase project. Until this exists, the bot automatically falls back to the pre-Phase-5 on-the-fly Pollinations URL — nothing breaks, but images won't be permanently stored.
+
+**Design note**: rather than adding a separate `stored_image_url` column (as originally proposed), the permanent URL now simply **replaces** the value in the existing `image_url` column — one column, one source of truth for "the image to use," whether it's permanent or a fallback. See `DATABASE_SCHEMA.md`.
 
 ---
 
@@ -203,16 +209,16 @@ Har phase ko project ke overall scope ka ek weight diya gaya hai (bara/critical 
 | Phase 2 — Multi-Source Collection | 10% | ✅ Done |
 | Phase 3 — AI Processing Pipeline (structured JSON, SEO title) | 15% | ✅ Done |
 | Phase 4 — Social Media Publishing Layer | 20% | ✅ Done |
-| Phase 5 — Image Pipeline | 10% | ⏳ Next |
-| Phase 6 — Website Integration | 15% | ❌ Not started |
+| Phase 5 — Image Pipeline | 10% | ✅ Done |
+| Phase 6 — Website Integration | 15% | ⏳ Next |
 | Phase 7 — Admin Dashboard | 8% | ❌ Not started |
 | Phase 8 — Monitoring & Analytics | 4% | ❌ Not started |
 | Phase 9 — Scalability & Optimization | 3% | ❌ Not started |
 | **Total** | **100%** | |
 
-**Abhi tak (Phase 0 + Phase 1 + Phase 2 + Phase 3 + Phase 4 done)**: **60% complete** (5% + 10% + 10% + 15% + 20%) — sabse bara single jump, kyunke publishing 4 channels cover karta hai.
+**Abhi tak (Phase 0 + Phase 1 + Phase 2 + Phase 3 + Phase 4 + Phase 5 done)**: **70% complete** (5% + 10% + 10% + 15% + 20% + 10%).
 
-**Phase 5 complete hone ke baad**: **70% complete** (60% + 10%).
+**Phase 6 complete hone ke baad**: **85% complete** (70% + 15%) — is baad sirf dashboard, monitoring, aur scale reh jayenge, jo core product value ke bina bhi system chalne deti hain.
 
 **Note**: "Done" yahan **code implemented aur request-format live-verified** ka matlab hai (see Phase 4 status note above) — **real-account success path abhi tak kisi bhi phase ke external integrations (Gemini, NewsAPI, Facebook, Telegram, WhatsApp, X) mein live-verify nahi hua**, kyunke is dev environment mein in platforms ke real credentials available nahi the. Production mein real secrets add karne ke baad, ek manual `workflow_dispatch` run se in sab ko end-to-end confirm karna baaki hai.
 

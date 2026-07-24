@@ -1,6 +1,6 @@
 # Folder Structure
 
-## Current Structure (as of Phase 4)
+## Current Structure (as of Phase 5)
 
 ```
 urdu-tech-world-news-bot/
@@ -14,7 +14,8 @@ urdu-tech-world-news-bot/
 │   ├── whatsapp.js
 │   └── index.js               # publishAll() orchestrator
 ├── newsapi.js                 # NewsAPI.org client (Phase 2-adjacent)
-├── index.js                   # Collector + dedupe + AI + DB + publish orchestration
+├── imagePipeline.js            # Download + optimize (sharp) + Supabase Storage upload (Phase 5)
+├── index.js                   # Collector + dedupe + AI + image + DB + publish orchestration
 ├── package.json
 ├── README.md
 └── (documentation files — this set)
@@ -42,7 +43,7 @@ urdu-tech-world-news-bot/
 │   │   └── schema.js             # Output validation schema (Phase 3 uses inline responseSchema + typeof checks, no zod)
 │   │
 │   ├── image/
-│   │   └── pipeline.js           # (Phase 5) generate → download → optimize → store
+│   │   └── pipeline.js           # ✅ Done (Phase 5) — actually exists at repo root as `imagePipeline.js`, not yet moved under `src/`
 │   │
 │   ├── db/
 │   │   ├── client.js             # Supabase client init

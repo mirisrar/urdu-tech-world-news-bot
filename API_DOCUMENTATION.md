@@ -63,9 +63,16 @@ Yeh project abhi ek script hai — koi khud ka public/REST API expose nahi karta
 ### 1.4 Pollinations.ai (Image Generation)
 
 - **Endpoint pattern**: `https://image.pollinations.ai/prompt/<url-encoded prompt>`
-- **Method**: GET (image served on-demand, not called by the bot itself — just constructs the URL and stores it)
+- **Method**: GET — as of Phase 5, the bot **actually downloads** this image (via `imagePipeline.js`) rather than just constructing the URL, so it can optimize and permanently store it.
 - **Auth**: None
-- **Limitation**: No guarantee of permanence/availability — see Phase 5 for the planned fix (download + store).
+- **Note**: generation is not instant (~10-20s observed) — this is the main source of added per-item latency in Phase 5.
+
+### 1.4b Supabase Storage (Phase 5 — `imagePipeline.js`)
+
+- **Client**: `supabase.storage.from(SUPABASE_STORAGE_BUCKET).upload(path, buffer, {...})` and `.getPublicUrl(path)` — via the same `@supabase/supabase-js` client used for the `news` table.
+- **Bucket**: `SUPABASE_STORAGE_BUCKET` env var, default `news-images`. **Must be created manually** as a public bucket in the Supabase dashboard (see `DATABASE_SCHEMA.md`) — the bot has no permission/mechanism to create it itself.
+- **Usage**: uploads the `sharp`-optimized WebP image, then reads back its public URL to store as the article's `image_url`.
+- **Error handling**: if the upload fails (e.g. bucket doesn't exist, permissions issue), falls back to the raw Pollinations.ai URL with a clear warning — verified live against a real (but non-existent-bucket) Supabase project.
 
 ### 1.5 Facebook Graph API (Phase 4 — `publishers/facebook.js`)
 
@@ -101,9 +108,7 @@ Yeh project abhi ek script hai — koi khud ka public/REST API expose nahi karta
 
 ## 2. Planned External APIs (Future Phases)
 
-| API | Phase | Purpose |
-|---|---|---|
-| Supabase Storage API | 5 | Upload/store optimized images permanently |
+All previously "planned" external APIs (Facebook, Telegram, X, WhatsApp, Supabase Storage) are now implemented — see §1 above. Nothing currently planned/outstanding at the external-API level; Phase 6+ needs are internal (§3 below).
 
 ## 3. Planned Internal API (Future — Website/Dashboard Integration)
 
@@ -143,5 +148,7 @@ Once Phase 6 (Website) and Phase 7 (Admin Dashboard) begin, this project will li
 | `WHATSAPP_RECIPIENT_NUMBERS` | WhatsApp publisher (comma-separated E.164 numbers) | No — optional channel, skipped if unset |
 | `X_API_KEY` / `X_API_SECRET` | X publisher (OAuth1.0a consumer key/secret) | No — optional channel, skipped if unset |
 | `X_ACCESS_TOKEN` / `X_ACCESS_TOKEN_SECRET` | X publisher (OAuth1.0a access token/secret) | No — optional channel, skipped if unset |
+| `SUPABASE_STORAGE_BUCKET` | Image pipeline (bucket name) | No — defaults to `news-images` |
+| `DEFAULT_FALLBACK_IMAGE_URL` | Image pipeline (last-resort fallback) | No — falls back to Pollinations.ai URL or empty string if unset |
 
 See `SECURITY_GUIDELINES.md` for how these should be stored/rotated.
