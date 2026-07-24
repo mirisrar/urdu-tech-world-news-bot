@@ -142,12 +142,23 @@ Yeh project ka core/differentiating feature hai — isay apna dedicated phase mi
 
 ## Phase 6 — Website Integration (Nexora News Urdu) — 🟠 High
 
-> **Clarify karna hai**: Kya "Nexora News Urdu" ek existing/separate website/repo hai (to yahan sirf API/webhook integration honi hai), ya yeh website isi project ke andar naya banana hai (to yahan pura frontend build karna hoga)? Scope isi decision par depend karta hai.
+> **✅ Resolved**: "Nexora News Urdu" ek **existing website hai, already ban chuki hai** — naya frontend build karne ki zaroorat nahi. Scope sirf **integration** hai: existing website ko is bot ke processed data (Supabase `news` table) se connect karna. Exact approach (direct Supabase client read vs. custom API/webhook) website ke tech stack par depend karta hai — see "Integration Approach" note below.
 
 - [ ] Processed news (Database se) website par automatically show karna.
 - [ ] Category filter, search, latest-news homepage.
 - [ ] SEO-friendly URLs har article ke liye (Phase 3 ka SEO title yahan use hoga).
 - [ ] Website aur social publishing dono same Database record se content lein (duplicate logic avoid karne ke liye).
+
+### Integration Approach (do options)
+
+1. **Direct Supabase client read (recommended agar possible ho)** — website apne frontend/backend code se seedha Supabase se `news` table read kare (`SUPABASE_URL` + anon key, RLS policy se public-read allow ki gayi ho). Is bot mein **koi extra code nahi chahiye** — sirf website side par integration hai. Sabse simple aur zero-maintenance approach agar website Node.js/Next.js/koi bhi stack hai jo HTTP requests kar sakta hai.
+2. **Webhook/API push** — is bot se har naya-processed article ke baad website ke API/webhook ko notify kiya jaye (jaisa Phase 4 ke publishers karte hain, ek naya `publishers/website.js` add kiya ja sakta hai). Zaroori agar website ka apna caching/build system hai jo push-based updates chahta ho (e.g. static site generator jo rebuild trigger kare).
+
+**Is bot (`urdu-tech-world-news-bot`) ki taraf se implementation ke liye zaroori info** (abhi tak unavailable):
+- Website ka tech stack/framework (Next.js, WordPress, PHP, static site generator, etc.)
+- Website ka code kahan hai — isi jaisa GitHub repo, ya alag hosting/CMS?
+- Kya website already Supabase se connected hai, ya fresh integration chahiye?
+- Agar webhook approach chahiye: website ka publish/rebuild trigger endpoint kya hai?
 
 **Done criteria**: Naya processed news item automatically Nexora News Urdu website par nazar aaye, bina manual publish kiye.
 
@@ -227,7 +238,7 @@ Har phase ko project ke overall scope ka ek weight diya gaya hai (bara/critical 
 - **Phase 4 (Publishing) sabse bara weight (20%)** — 4 alag channels (Facebook, Telegram, WhatsApp, X), har ek apna auth/API/idempotency logic chahta hai — sabse zyada implementation surface area.
 - **Phase 3 (AI Pipeline) aur Phase 6 (Website) 15% each** — dono critical/high priority hain aur substantial kaam hain (structured AI output + validation; full website ya integration layer).
 - **Phase 7-9 (Dashboard, Monitoring, Scale) kam weight** — valuable hain but project ke "core value" (news collect → translate → publish) ke baghair bhi system chal sakta hai; yeh polish/maturity phases hain.
-- Yeh weights **estimates hain, exact science nahi** — jaise-jaise actual implementation ka scope clear hota jaye (especially Phase 6's "existing vs. naya website" open question), inko revise karna theek hai.
+- Yeh weights **estimates hain, exact science nahi** — jaise-jaise actual implementation ka scope clear hota jaye, inko revise karna theek hai. (Phase 6's "existing vs. naya website" sawal ab resolve ho chuka hai — existing website hai, sirf integration chahiye — see Phase 6 details.)
 
 ### Kaise update karein
 

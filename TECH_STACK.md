@@ -24,7 +24,7 @@
 | Phase 3 | ✅ Done — structured output / JSON mode (Gemini `responseMimeType: "application/json"`) | Reliable AI parsing |
 | Phase 4 | ✅ Done — Facebook Graph API, Telegram Bot API, WhatsApp Business Cloud API, X (Twitter) API v2 (manual OAuth1.0a via `node:crypto`) | Social publishing |
 | Phase 5 | ✅ Done — Supabase Storage + `sharp` for optimization | Permanent, optimized images |
-| Phase 6 | Next.js (React) — assuming website build-out; or REST/webhook if integrating with existing Nexora News Urdu site | Website integration |
+| Phase 6 | Direct Supabase client read from the existing Nexora News Urdu site (preferred, no bot-side code needed), or a `publishers/website.js` webhook if the site needs a push-based rebuild trigger — depends on the site's tech stack (not yet known — see `PROJECT_ROADMAP.md` Phase 6) | Website integration |
 | Phase 7 | Admin dashboard framework — Next.js + Supabase Auth, or a lightweight admin panel (e.g. Retool/custom) | Bot/RSS/settings management |
 | Phase 8 | Logging/monitoring — e.g. Sentry (errors), simple custom analytics tables in Supabase | Health & performance visibility |
 | Phase 9 | Queue system (e.g. BullMQ + Redis, or Supabase Edge Functions/queues) | Scalability |
@@ -45,5 +45,5 @@
 ## Deployment Targets (proposed, see `DEPLOYMENT_GUIDE.md`)
 
 - Bot automation: GitHub Actions (current, no change needed for Phase 1-3)
-- Website (Phase 6): Vercel/Netlify (if built in-house) — TBD based on Nexora News Urdu integration decision
+- Website (Phase 6): Nexora News Urdu is already deployed independently (existing site — hosting/platform not yet known to this bot's team)
 - Admin dashboard (Phase 7): Same hosting as website, or separate internal deployment

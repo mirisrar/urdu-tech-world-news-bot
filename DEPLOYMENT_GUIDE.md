@@ -38,19 +38,13 @@ Yeh project currently ek **serverless-style deployment** use kar raha hai — ko
 - GitHub Actions free tier limits (2,000 minutes/month for private repos; unlimited for public repos, but with concurrency limits) — monitor usage agar frequency/sources badhein.
 - Agar zyada frequent runs (e.g. every 5 minutes) ya heavy processing chahiye ho, consider migrating to a dedicated worker (e.g. small VM, Railway, Render) — GitHub Actions cron minimum granularity bhi 5 minutes hai aur schedule delays ho sakti hain under load.
 
-## 3. Future Deployment — Website (Phase 6)
+## 3. Website Integration — Nexora News Urdu (Phase 6)
 
-Depends on the open question in `PROJECT_ROADMAP.md`: existing Nexora News Urdu site vs. new build.
+Nexora News Urdu **already exists and is already deployed** independently of this bot — no new website build/deployment needed by this project. What's needed is connecting it to this bot's data:
 
-**Agar naya build hai** (recommended stack: Next.js + Supabase):
-
-- Deploy target: **Vercel** (free tier, native Next.js support, easy env var management) ya Netlify.
-- Environment variables needed: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (public/anon key, safe for client since RLS controls access).
-- CI: Vercel auto-deploys on push to `main` (preview deployments on PRs) — no extra GitHub Actions config typically needed.
-
-**Agar existing site hai**:
-
-- Integration approach TBD — likely a webhook/API call from this bot to the existing site's CMS/API after processing, or the existing site polls Supabase directly.
+- **Preferred**: the website reads directly from Supabase (`SUPABASE_URL` + a public-read anon/RLS policy on the `news` table) from its own frontend/backend code — no deployment change needed on this bot's side at all.
+- **Alternative**: if the website needs a push-based trigger (e.g. a static site generator that needs to rebuild when new content appears), this bot would add a `publishers/website.js` webhook call, similar to the Phase 4 social publishers.
+- **Still needed to proceed**: the website's tech stack, where its code lives, and (if webhook-based) its trigger endpoint — see `PROJECT_ROADMAP.md` Phase 6.
 
 ## 4. Future Deployment — Admin Dashboard (Phase 7)
 

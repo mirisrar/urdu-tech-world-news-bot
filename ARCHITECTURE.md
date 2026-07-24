@@ -82,7 +82,7 @@ Sends the headline to Google's Gemini API (`gemini-3.5-flash-lite`) with a promp
 Single `news` table is the system's source of truth (see `DATABASE_SCHEMA.md`). All downstream consumers (website, social publishers, analytics) read from here — not from RSS/AI directly — to avoid duplicated logic.
 
 ### 6. Website (planned — Phase 6)
-Nexora News Urdu — will read processed news from Supabase and render Urdu-language pages. Integration approach (existing external site vs. new build) is TBD (see open question in `PROJECT_ROADMAP.md`).
+Nexora News Urdu — an **existing, already-built and deployed website** (external to this repo). Integration (not a new build) is needed: either the site reads processed news directly from Supabase (preferred, no changes needed on this bot's side), or this bot pushes a webhook notification on publish (if the site needs a rebuild trigger). See `PROJECT_ROADMAP.md` Phase 6 for what's still needed to proceed (site's tech stack, repo/hosting, webhook endpoint if applicable).
 
 ### 7. Social Media Publisher (✅ Phase 4 done)
 `publishers/` module — one file per channel (Facebook Graph API, Telegram Bot API, X API v2 with manual OAuth1.0a, WhatsApp Business Cloud API) plus an orchestrator (`publishAll()`). Currently called **inline** right after a successful save (not as a separate job reading "unpublished" rows from the Database, which is the longer-term target once a `status` column exists — see Phase 9 notes) — each channel is independently optional and fail-soft. See `PROJECT_ROADMAP.md` Phase 4 for the WhatsApp scope adjustment (template messages to opted-in recipients, not public "Channel" broadcasts, which have no public API).

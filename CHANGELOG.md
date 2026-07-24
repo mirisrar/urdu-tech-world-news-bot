@@ -43,6 +43,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). Versions abhi 
 - Verified request format against the real platform APIs using fake-but-well-formed credentials: Facebook/WhatsApp return real "Invalid OAuth access token" errors, Telegram returns real 401 Unauthorized, and X's manually OAuth1.0a-signed request reaches Twitter's server and gets a proper 401 (not a malformed-request rejection) — confirming the signing implementation is structurally correct. Actual publish success was not tested (no real platform credentials available).
 - **Also fixed**: `.github/workflows/news.yml` was missing the `env:` entries for `NEWS_API_KEY` and all Phase 4 publisher secrets — meaning even if those GitHub Actions secrets were added, they'd never reach `node index.js` in production. Fixed across the NewsAPI and Phase 4 branches.
 
+### Resolved (Phase 6 scope clarification)
+- Confirmed: "Nexora News Urdu" is an **existing, already-built website**, not something to build from scratch. Phase 6 scope is now integration-only (connect the existing site to this bot's Supabase data), not a new frontend build. Still needed to implement: the website's tech stack, where its code lives, and whether a direct-Supabase-read or webhook-push integration is appropriate — see `PROJECT_ROADMAP.md` Phase 6.
+
 ### Added (Phase 5 — Image Pipeline)
 - New `imagePipeline.js` (`getArticleImageUrl()`): downloads the AI-generated image from Pollinations.ai, optimizes it with `sharp` (resized/cropped to 1200x630, re-encoded as WebP quality 80), and uploads it to Supabase Storage (`SUPABASE_STORAGE_BUCKET`, default `news-images`), returning the permanent public URL.
 - 4-level graceful fallback: permanent Storage URL → raw Pollinations.ai URL (pre-Phase-5 behavior) → `DEFAULT_FALLBACK_IMAGE_URL` (if configured) → empty string. Never throws — a bad image never blocks saving or publishing an article.

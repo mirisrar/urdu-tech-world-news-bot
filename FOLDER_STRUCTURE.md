@@ -61,8 +61,8 @@ urdu-tech-world-news-bot/
 │   │
 │   └── run.js                    # Main entrypoint, replaces current index.js
 │
-├── website/                      # (Phase 6, if built in-repo rather than external Nexora integration)
-│   └── ...                       # Next.js app
+├── publishers/
+│   └── website.js                 # (Phase 6, only if a webhook/push trigger is needed — Nexora News Urdu is an existing, separately-deployed site, not built in this repo)
 │
 ├── dashboard/                    # (Phase 7, if built as a separate app)
 │   └── ...
@@ -84,7 +84,7 @@ urdu-tech-world-news-bot/
 
 - This restructuring is **not required for Phase 1** (bug fixes can land in `index.js` as-is). It becomes worthwhile starting **Phase 2/3**, when multiple sources and a dedicated AI module justify separate files.
 - Migrate incrementally — extract one concern at a time (e.g. `db/news.repository.js` first, since it's the simplest, well-bounded piece), rather than a single big-bang rewrite.
-- Whether `website/` and `dashboard/` live in this repo or as separate repos depends on the open question in `PROJECT_ROADMAP.md` (Phase 6) about whether Nexora News Urdu is an existing external site or a new build.
+- Nexora News Urdu (the website) is an **existing, already-deployed site external to this repo** — no `website/` folder is needed here. `dashboard/` (Phase 7) is still undecided (separate repo vs. this one).
 
 ## Root-Level Documentation Files (current)
 
