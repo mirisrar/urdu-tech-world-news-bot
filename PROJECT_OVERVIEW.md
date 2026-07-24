@@ -27,12 +27,13 @@ Yeh ek automated news aggregation aur AI content pipeline hai jo:
 
 | Component | Status |
 |---|---|
-| RSS collection (single source: BBC) | ✅ Working (basic) |
-| AI processing (Groq, Urdu translation/summary) | ✅ Working (basic, needs schema validation) |
+| RSS collection (single source: BBC) | ✅ Working (multi-item per run) |
+| AI processing (Groq, Urdu translation/summary) | ✅ Working (validated, retried on failure; JSON-structured output still pending — Phase 3) |
 | Database storage (Supabase) | ✅ Working |
 | Automation (GitHub Actions cron, hourly) | ✅ Working |
-| Duplicate prevention | ⚠️ Buggy (check exists, action commented out) |
-| Multi-source collection | ❌ Not yet |
+| Duplicate prevention | ✅ Fixed (Phase 1) |
+| Multi-item processing per run | ✅ Fixed (Phase 1) |
+| Multi-source collection | ❌ Not yet (Phase 2) |
 | Website publishing | ❌ Not yet |
 | Social media publishing (Facebook/Telegram/WhatsApp/X) | ❌ Not yet |
 | Image pipeline (permanent storage) | ❌ Not yet |

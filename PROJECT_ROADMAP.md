@@ -46,18 +46,20 @@ Analytics
 
 ---
 
-## Phase 1 — Stability & Bug Fixes — 🔴 Critical
+## Phase 1 — Stability & Bug Fixes — 🔴 Critical (✅ Implemented — see PR #2)
 
 Pehle jo bana hai usay reliable banao, tabhi upar naya kaam karna faida dega.
 
-- [ ] **Duplicate bug fix**: `existing.length > 0` check ke baad `return;` ko actually enable karo (abhi comment out hai).
-- [ ] **Multi-item processing**: `feed.items[0]` ki jagah loop lagao (top 5–10 items), taake sirf headline hi baar baar process na ho.
-- [ ] **Per-item error isolation**: Ek item fail ho to pura run crash na ho, baaki items continue hon.
-- [ ] **Retry logic**: Groq API ya Supabase call fail ho to 1–2 retries with backoff.
-- [ ] **Logging cleanup**: Debug dumps (API key length, raw JSON) hata kar structured, concise logs rakho.
-- [ ] **AI response validation**: Format match na ho to item skip/log karo, empty strings DB mein save na karo.
+- [x] **Duplicate bug fix**: `existing.length > 0` check ke baad `return;` ko actually enable karo (abhi comment out hai).
+- [x] **Multi-item processing**: `feed.items[0]` ki jagah loop lagao (top 5–10 items), taake sirf headline hi baar baar process na ho.
+- [x] **Per-item error isolation**: Ek item fail ho to pura run crash na ho, baaki items continue hon.
+- [x] **Retry logic**: Groq API ya Supabase call fail ho to 1–2 retries with backoff.
+- [x] **Logging cleanup**: Debug dumps (API key length, raw JSON) hata kar structured, concise logs rakho.
+- [x] **AI response validation**: Format match na ho to item skip/log karo, empty strings DB mein save na karo.
 
 **Done criteria**: Bot bina duplicate ya crash ke, multiple fresh news items reliably process kar sake.
+
+**Status**: Code implemented in `index.js` (see PR: `cursor/phase1-stability-fixes-2a5f`). Pending: manual verification against live Supabase/Groq secrets before considering fully done (no automated tests exist yet — see `TESTING_GUIDE.md`).
 
 ---
 

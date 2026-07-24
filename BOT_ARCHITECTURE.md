@@ -2,20 +2,25 @@
 
 Yeh document specifically bot ke **execution pipeline** (`index.js`) ko detail mein explain karta hai — kya current implementation hai, aur kya improvements planned hain.
 
-## Current Execution Flow (`index.js`)
+## Current Execution Flow (`index.js`, post Phase 1 fixes)
 
 ```
 run()
   │
-  ├── 1. parser.parseURL(BBC_RSS_URL)      → feed.items[]
-  ├── 2. item = feed.items[0]               → sirf top headline
-  ├── 3. Supabase: SELECT url WHERE url = item.link
-  │        └── if exists → log "Already exists" (BUG: return commented out, processing continues anyway)
-  ├── 4. analyzeNews(item.title)
-  │        └── POST to Groq API → free-text AI response
-  ├── 5. Regex parse AI response → category, urdu_title, urdu_summary, article, hashtags, facebook_post, image_prompt
-  ├── 6. Construct image_url from image_prompt (Pollinations.ai)
-  └── 7. Supabase: INSERT into news table
+  ├── 1. parser.parseURL(BBC_RSS_URL)              → feed.items[]
+  ├── 2. items = feed.items.slice(0, MAX_ITEMS_PER_RUN)   → top 5 items (was: only items[0])
+  ├── for each item:
+  │     ├── 3. try:
+  │     │     ├── Supabase: SELECT url WHERE url = item.link
+  │     │     │      └── if exists → skip this item (fixed: actually skips now)
+  │     │     ├── analyzeNews(item.title)
+  │     │     │      └── POST to Groq API, with retry-with-backoff (up to 2 retries)
+  │     │     ├── parse AI response (regex, now captures multi-line fields fully)
+  │     │     ├── validate required fields present → else retry, then skip+log
+  │     │     ├── construct image_url from image_prompt (Pollinations.ai)
+  │     │     └── Supabase: INSERT into news table
+  │     └── catch: log error, continue to next item (fixed: no longer aborts whole run)
+  └── log run summary (processed / skipped / failed counts)
 ```
 
 ## Trigger
@@ -25,16 +30,22 @@ GitHub Actions workflow `.github/workflows/news.yml`:
 - Sets up Node 22, runs `npm install`, then `node index.js`.
 - Injects secrets as environment variables: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `GROQ_API_KEY`.
 
-## Known Issues (Bot-Level)
+## Known Issues — Status
 
-1. **Duplicate check doesn't stop execution** — `return;` after detecting an existing URL is commented out (line ~69 in `index.js`), so the item still gets AI-processed and re-inserted.
-2. **Single-item processing** — `feed.items[0]` only ever looks at the top story; if it hasn't changed since the last run, the bot repeatedly (attempts to) process the same headline.
-3. **Single source** — the RSS URL is hardcoded; no loop over multiple feeds.
-4. **No error isolation** — a single failure (e.g., malformed AI response, network error) can affect the whole run since there's no per-item try/catch boundary.
-5. **Debug logging in production path** — e.g. `console.log("GROQ KEY LENGTH:", ...)` and full raw JSON dumps of the Groq response.
-6. **Regex-based parsing is fragile** — if the AI's free-text response deviates slightly from the expected format, fields silently default to empty strings rather than failing loudly.
+Fixed in Phase 1 (see PR `cursor/phase1-stability-fixes-2a5f`):
 
-## Target Bot Pipeline (Post Phase 1-3)
+1. ~~**Duplicate check doesn't stop execution**~~ — ✅ Fixed. Duplicates are now actually skipped.
+2. ~~**Single-item processing**~~ — ✅ Fixed. Up to `MAX_ITEMS_PER_RUN` (5) fresh items are processed per run.
+3. ~~**No error isolation**~~ — ✅ Fixed. Each item is wrapped in try/catch; failures are logged and the run continues.
+4. ~~**Debug logging in production path**~~ — ✅ Fixed. Replaced with a small structured logger (`log(level, message, meta)`).
+5. ~~**Regex-based parsing is fragile**~~ — ✅ Improved. Multi-line fields (`ARTICLE`, `FACEBOOK_POST`) now capture their full content, and a response missing required fields is retried then skipped/logged instead of silently saved with empty strings. (Still free-text/regex based — moving to structured JSON output is tracked separately as Phase 3.)
+
+Still open (later phases):
+
+6. **Single source** — the RSS URL is still hardcoded to BBC; no loop over multiple feeds yet — Phase 2.
+7. **Free-text AI output** — parsing is more robust now, but still regex-based rather than a strict JSON schema — Phase 3.
+
+## Target Bot Pipeline (Post Phase 2-3)
 
 ```
 run()

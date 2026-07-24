@@ -26,25 +26,28 @@ Headline:
 <headline text>
 ```
 
-## Current Output Parsing (regex-based)
+## Current Output Parsing (regex-based, post Phase 1 fix)
 
-| Field | Regex | Notes |
-|---|---|---|
-| `category` | `/CATEGORY:\s*(.*)/i` | Defaults to `"General"` if not matched |
-| `urdu_title` | `/URDU_TITLE:\s*(.*)/i` | Defaults to `""` |
-| `urdu_summary` | `/URDU_SUMMARY:\s*(.*)/i` | Defaults to `""`; only captures a single line (may truncate multi-sentence summaries) |
-| `article` | `/ARTICLE:\s*([\s\S]*?)FACEBOOK_POST:/i` | Captures multi-line content between `ARTICLE:` and `FACEBOOK_POST:` |
-| `hashtags` | `/HASHTAGS:\s*(.*)/i` | Defaults to `""` |
-| `facebook_post` | `/FACEBOOK_POST:\s*(.*)/i` | **Bug-prone**: only captures a single line, but the prompt asks for a "complete Facebook post" which is likely multi-line/multi-paragraph — this regex will truncate it |
-| `image_prompt` | `/IMAGE_PROMPT:\s*(.*)/i` | Defaults to `""` |
+A generic `extractField(text, label, allLabels)` helper now captures each field's content up to the *next* known label (or end of string), instead of using a single-line `(.*)` regex per field. This fixes the previous truncation bug for multi-line fields.
 
-## Known Weaknesses (why Phase 3 exists)
+| Field | Notes |
+|---|---|
+| `category` | Defaults to `"General"` if not matched |
+| `urdu_title` | Defaults to `""` — required for a response to be considered valid |
+| `urdu_summary` | Defaults to `""` — required for a response to be considered valid; now captures full multi-sentence content |
+| `article` | Captures full multi-line content up to `HASHTAGS:`/`FACEBOOK_POST:`/etc.; required for a response to be considered valid |
+| `hashtags` | Defaults to `""` |
+| `facebook_post` | **Fixed**: previously only captured a single line even though the prompt asks for a "complete Facebook post" (multi-line/multi-paragraph); now captures full content up to the next label |
+| `image_prompt` | Defaults to `""` |
 
-1. **Free-text parsing is fragile** — the model isn't guaranteed to follow the exact format every time; any deviation breaks the regex silently (empty string, no error).
-2. **Single-line regexes truncate multi-line content** — `facebook_post` and `urdu_summary` are especially at risk since their expected content is multi-sentence/multi-paragraph.
-3. **No validation** — there's no check that all required fields were successfully extracted before inserting into the DB.
-4. **No SEO title** — currently missing; needed for Phase 6 (website).
-5. **No content moderation** — AI output is trusted and published as-is; no profanity/misinformation check.
+A response is only accepted if `urdu_title`, `urdu_summary`, and `article` were all successfully extracted (`isValidAiResult`); otherwise the call is retried (up to 2 times with backoff), and if still invalid, the item is skipped and logged rather than saved with empty fields.
+
+## Known Weaknesses (why Phase 3 still exists)
+
+1. **Still free-text, not structured JSON** — the model isn't guaranteed to follow the exact format every time. The Phase 1 fix makes failures *safe* (retried, then skipped+logged) rather than *silent*, but doesn't eliminate the underlying fragility of regex-based parsing.
+2. **No SEO title** — currently missing; needed for Phase 6 (website).
+3. **No content moderation** — AI output is trusted and published as-is; no profanity/misinformation check.
+4. **No prompt versioning yet** — the prompt itself isn't tracked/versioned across changes.
 
 ## Planned Improvements (Phase 3)
 
