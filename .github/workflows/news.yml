@@ -38,3 +38,6 @@ jobs:
           WHATSAPP_ACCESS_TOKEN: ${{ secrets.WHATSAPP_ACCESS_TOKEN }}
           WHATSAPP_TEMPLATE_NAME: ${{ secrets.WHATSAPP_TEMPLATE_NAME }}
           WHATSAPP_RECIPIENT_NUMBERS: ${{ secrets.WHATSAPP_RECIPIENT_NUMBERS }}
+          # Phase 5 (image pipeline) — both optional, sensible defaults/fallbacks apply if unset.
+          SUPABASE_STORAGE_BUCKET: ${{ secrets.SUPABASE_STORAGE_BUCKET }}
+          DEFAULT_FALLBACK_IMAGE_URL: ${{ secrets.DEFAULT_FALLBACK_IMAGE_URL }}
