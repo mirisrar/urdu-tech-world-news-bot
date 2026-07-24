@@ -2,6 +2,7 @@ import Parser from "rss-parser";
 import { createClient } from "@supabase/supabase-js";
 import { fetchNewsFromNewsApi } from "./newsapi.js";
 import { publishAll } from "./publishers/index.js";
+import { getArticleImageUrl } from "./imagePipeline.js";
 
 const parser = new Parser();
 
@@ -263,11 +264,7 @@ async function isDuplicate(url) {
   return Boolean(data && data.length > 0);
 }
 
-function buildImageUrl(imagePrompt) {
-  return `https://image.pollinations.ai/prompt/${encodeURIComponent(imagePrompt)}`;
-}
-
-function buildNewsRow(item, sourceName, aiResult) {
+function buildNewsRow(item, sourceName, aiResult, imageUrl) {
   return {
     title: item.title,
     source: sourceName,
@@ -280,7 +277,7 @@ function buildNewsRow(item, sourceName, aiResult) {
     hashtags: aiResult.hashtags,
     facebook_post: aiResult.facebookPost,
     image_prompt: aiResult.imagePrompt,
-    image_url: buildImageUrl(aiResult.imagePrompt)
+    image_url: imageUrl
   };
 }
 
@@ -337,8 +334,8 @@ async function writeWithColumnFallback(row, performWrite, { maxAttempts = 8 } = 
  * Inserts a processed article and returns its new row id (used afterward
  * to record publish status — see updatePublishStatus).
  */
-async function saveNews(item, sourceName, aiResult) {
-  const row = buildNewsRow(item, sourceName, aiResult);
+async function saveNews(item, sourceName, aiResult, imageUrl) {
+  const row = buildNewsRow(item, sourceName, aiResult, imageUrl);
   const data = await writeWithColumnFallback(row, (currentRow) =>
     supabase.from("news").insert(currentRow).select("id").single()
   );
@@ -384,14 +381,14 @@ async function updatePublishStatus(newsId, publishResults) {
  * and a publishing hiccup shouldn't be treated the same as a processing
  * failure (it doesn't count against `failed` in the run summary).
  */
-async function publishAndRecord(newsId, item, sourceName, aiResult) {
+async function publishAndRecord(newsId, item, sourceName, aiResult, imageUrl) {
   try {
     const results = await publishAll({
       urduTitle: aiResult.urduTitle,
       urduSummary: aiResult.urduSummary,
       facebookPost: aiResult.facebookPost,
       hashtags: aiResult.hashtags,
-      imageUrl: buildImageUrl(aiResult.imagePrompt),
+      imageUrl,
       sourceUrl: item.link
     });
 
@@ -428,10 +425,16 @@ async function processItem(item, sourceName) {
   }
 
   const aiResult = await analyzeNews(item.title);
-  const newsId = await saveNews(item, sourceName, aiResult);
+
+  // Phase 5: download + optimize + permanently store the generated image
+  // (falls back to the raw Pollinations.ai URL, a configured default, or
+  // an empty string if any stage fails — see imagePipeline.js).
+  const imageUrl = await getArticleImageUrl(supabase, aiResult.imagePrompt, item.title, log);
+
+  const newsId = await saveNews(item, sourceName, aiResult, imageUrl);
   log("info", "News saved with full AI analysis", { title: item.title, source: sourceName });
 
-  await publishAndRecord(newsId, item, sourceName, aiResult);
+  await publishAndRecord(newsId, item, sourceName, aiResult, imageUrl);
 
   return "processed";
 }
