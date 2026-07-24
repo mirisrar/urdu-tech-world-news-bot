@@ -1,5 +1,6 @@
 import Parser from "rss-parser";
 import { createClient } from "@supabase/supabase-js";
+import { fetchNewsFromNewsApi } from "./newsapi.js";
 
 const parser = new Parser();
 
@@ -22,6 +23,12 @@ const SOURCES = [
   { name: "Geo News", url: "https://www.geo.tv/rss/1/1" },
   { name: "ARY News", url: "https://arynews.tv/feed/" }
 ];
+
+// Optional additional source: NewsAPI.org (see newsapi.js). Only used if
+// NEWS_API_KEY is set — if it's missing, this source is skipped entirely
+// (info log, not an error) so the bot keeps working for anyone who hasn't
+// configured a NewsAPI key yet.
+const NEWS_API_QUERIES = ["technology"];
 
 // How many fresh (non-duplicate) items to consider per source...
 const MAX_ITEMS_PER_SOURCE = 3;
@@ -250,12 +257,12 @@ async function processItem(item, sourceName) {
 }
 
 /**
- * Fetches every configured source independently and collects their items.
+ * Fetches every configured RSS source independently and collects their items.
  * A source that fails to fetch/parse is logged and skipped — it never
  * stops the other sources from being collected (fail-soft, Phase 1 principle
  * extended to the source level).
  */
-async function collectItems() {
+async function collectRssItems() {
   const collected = [];
 
   for (const source of SOURCES) {
@@ -275,15 +282,62 @@ async function collectItems() {
     }
   }
 
-  return collected.slice(0, MAX_ITEMS_PER_RUN);
+  return collected;
+}
+
+/**
+ * Fetches items from NewsAPI.org (see newsapi.js), one query at a time.
+ * Skipped entirely (with an info log, not an error) if NEWS_API_KEY isn't
+ * set. Each query is fetched independently and fail-soft, same as RSS sources.
+ */
+async function collectNewsApiItems() {
+  if (!process.env.NEWS_API_KEY) {
+    log("info", "NEWS_API_KEY not set — skipping NewsAPI source");
+    return [];
+  }
+
+  const collected = [];
+
+  for (const query of NEWS_API_QUERIES) {
+    try {
+      const articles = await fetchNewsFromNewsApi(query, { pageSize: MAX_ITEMS_PER_SOURCE });
+      log("info", `Fetched ${articles.length} articles from NewsAPI for query "${query}"`);
+      for (const article of articles) {
+        if (!article.url || !article.title) {
+          continue;
+        }
+        // Adapt NewsAPI's shape to the { title, link } shape the rest of
+        // the pipeline (isDuplicate/analyzeNews/saveNews) already expects
+        // from RSS items.
+        collected.push({
+          item: { title: article.title, link: article.url },
+          sourceName: "NewsAPI"
+        });
+      }
+    } catch (error) {
+      log("error", `Failed to fetch NewsAPI results for query "${query}"`, {
+        message: error.message
+      });
+      // Fail-soft: continue with the next query instead of aborting the run.
+    }
+  }
+
+  return collected;
+}
+
+async function collectItems() {
+  const rssItems = await collectRssItems();
+  const newsApiItems = await collectNewsApiItems();
+  return [...rssItems, ...newsApiItems].slice(0, MAX_ITEMS_PER_RUN);
 }
 
 async function run() {
   const candidates = await collectItems();
 
+  const activeSourceCount = SOURCES.length + (process.env.NEWS_API_KEY ? 1 : 0);
   log(
     "info",
-    `Collected ${candidates.length} candidate items from ${SOURCES.length} sources`
+    `Collected ${candidates.length} candidate items from ${activeSourceCount} source(s)`
   );
 
   let processed = 0;
@@ -317,7 +371,7 @@ async function run() {
     skipped,
     failed,
     total: candidates.length,
-    sources: SOURCES.length
+    sources: activeSourceCount
   });
 }
 
