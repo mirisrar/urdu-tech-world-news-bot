@@ -8,12 +8,30 @@ const supabase = createClient(
   process.env.SUPABASE_ANON_KEY
 );
 
-// Phase 2 will replace this with a config-driven list of multiple sources.
-const RSS_FEED_URL = "https://feeds.bbci.co.uk/news/rss.xml";
-const SOURCE_NAME = "BBC";
+// Config-driven list of RSS sources (Phase 2). Each is fetched independently;
+// a failure fetching one source does not stop the others (fail-soft).
+//
+// Reuters was considered (per PROJECT_ROADMAP.md Phase 2) but is intentionally
+// omitted: their public RSS feeds were discontinued around 2020 and the
+// documented feed URLs no longer return valid RSS (verified before adding
+// this list — see PROJECT_ROADMAP.md Phase 2 notes).
+const SOURCES = [
+  { name: "BBC", url: "https://feeds.bbci.co.uk/news/rss.xml" },
+  { name: "Al Jazeera", url: "https://www.aljazeera.com/xml/rss/all.xml" },
+  { name: "Dawn", url: "https://www.dawn.com/feeds/home" },
+  { name: "Geo News", url: "https://www.geo.tv/rss/1/1" },
+  { name: "ARY News", url: "https://arynews.tv/feed/" }
+];
 
-// How many fresh (non-duplicate) items to process per run.
-const MAX_ITEMS_PER_RUN = 5;
+// How many fresh (non-duplicate) items to consider per source...
+const MAX_ITEMS_PER_SOURCE = 3;
+// ...and an overall safety cap across all sources combined per run, so
+// adding more sources later can't silently explode AI/API usage in one run.
+const MAX_ITEMS_PER_RUN = 10;
+
+// Minimum delay between AI calls, so processing several items across
+// several sources doesn't burst past Gemini's per-minute rate limits.
+const AI_CALL_SPACING_MS = 1500;
 
 // Retry settings for the Gemini API call.
 const AI_MAX_RETRIES = 2;
@@ -187,10 +205,10 @@ async function isDuplicate(url) {
   return Boolean(data && data.length > 0);
 }
 
-async function saveNews(item, aiResult) {
+async function saveNews(item, sourceName, aiResult) {
   const { error } = await supabase.from("news").insert({
     title: item.title,
-    source: SOURCE_NAME,
+    source: sourceName,
     url: item.link,
     category: aiResult.category,
     urdu_title: aiResult.urduTitle,
@@ -213,39 +231,72 @@ async function saveNews(item, aiResult) {
  * Processes a single item and returns its outcome ("processed" | "skipped"),
  * or throws if it failed. The caller is responsible for fail-soft handling.
  */
-async function processItem(item) {
+async function processItem(item, sourceName) {
   if (!item.link || !item.title) {
-    log("warn", "Skipping item with missing title/link");
+    log("warn", "Skipping item with missing title/link", { source: sourceName });
     return "skipped";
   }
 
   const duplicate = await isDuplicate(item.link);
   if (duplicate) {
-    log("info", "Skipping duplicate", { url: item.link });
+    log("info", "Skipping duplicate", { url: item.link, source: sourceName });
     return "skipped";
   }
 
   const aiResult = await analyzeNews(item.title);
-  await saveNews(item, aiResult);
-  log("info", "News saved with full AI analysis", { title: item.title });
+  await saveNews(item, sourceName, aiResult);
+  log("info", "News saved with full AI analysis", { title: item.title, source: sourceName });
   return "processed";
 }
 
-async function run() {
-  const feed = await parser.parseURL(RSS_FEED_URL);
-  const items = feed.items.slice(0, MAX_ITEMS_PER_RUN);
+/**
+ * Fetches every configured source independently and collects their items.
+ * A source that fails to fetch/parse is logged and skipped — it never
+ * stops the other sources from being collected (fail-soft, Phase 1 principle
+ * extended to the source level).
+ */
+async function collectItems() {
+  const collected = [];
 
-  log("info", `Fetched ${feed.items.length} items, processing up to ${items.length}`);
+  for (const source of SOURCES) {
+    try {
+      const feed = await parser.parseURL(source.url);
+      const items = feed.items.slice(0, MAX_ITEMS_PER_SOURCE);
+      log("info", `Fetched ${feed.items.length} items from ${source.name}, taking ${items.length}`);
+      for (const item of items) {
+        collected.push({ item, sourceName: source.name });
+      }
+    } catch (error) {
+      log("error", `Failed to fetch feed for ${source.name}`, {
+        url: source.url,
+        message: error.message
+      });
+      // Fail-soft: continue with the next source instead of aborting the run.
+    }
+  }
+
+  return collected.slice(0, MAX_ITEMS_PER_RUN);
+}
+
+async function run() {
+  const candidates = await collectItems();
+
+  log(
+    "info",
+    `Collected ${candidates.length} candidate items from ${SOURCES.length} sources`
+  );
 
   let processed = 0;
   let skipped = 0;
   let failed = 0;
 
-  for (const item of items) {
+  for (const { item, sourceName } of candidates) {
     try {
-      const outcome = await processItem(item);
+      const outcome = await processItem(item, sourceName);
       if (outcome === "processed") {
         processed++;
+        // Throttle: only wait after an actual AI call, not after skips.
+        await sleep(AI_CALL_SPACING_MS);
       } else {
         skipped++;
       }
@@ -254,13 +305,20 @@ async function run() {
       log("error", "Failed to process item", {
         title: item.title,
         url: item.link,
+        source: sourceName,
         message: error.message
       });
       // Fail-soft: continue with the next item instead of aborting the whole run.
     }
   }
 
-  log("info", "Run complete", { processed, skipped, failed, total: items.length });
+  log("info", "Run complete", {
+    processed,
+    skipped,
+    failed,
+    total: candidates.length,
+    sources: SOURCES.length
+  });
 }
 
 run().catch((error) => {
