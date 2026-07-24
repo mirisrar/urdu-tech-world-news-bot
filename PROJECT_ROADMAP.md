@@ -79,6 +79,8 @@ Pehle jo bana hai usay reliable banao, tabhi upar naya kaam karna faida dega.
 
 **Category-wise source mapping deferred**: mapping specific sources to specific categories (e.g. "this feed is Tech-only") wasn't implemented, since the "3+ independent sources" done criteria didn't require it and Phase 3's AI-based category classification already assigns a category per article regardless of source. Revisit if a future need arises (e.g. a source-specific trust/curation policy).
 
+**Bonus, pre-Phase-3 addition (see PR #4)**: **NewsAPI.org** added as a 6th, *optional* source (`newsapi.js`, keyword-based search e.g. `"technology"`). Skipped automatically if `NEWS_API_KEY` isn't set — doesn't affect anyone not using it. ⚠️ Success path (valid key → real articles) couldn't be live-tested in the dev environment (no real `NEWS_API_KEY` available there) — error-handling paths were verified against the real API and via mocks; recommend a manual verification run with a real key before relying on it in production.
+
 ---
 
 ## Phase 3 — AI Processing Pipeline — 🔴 Critical

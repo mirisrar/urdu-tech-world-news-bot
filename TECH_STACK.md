@@ -5,7 +5,8 @@
 | Layer | Technology | Purpose |
 |---|---|---|
 | Runtime | Node.js (v22, ES Modules) | Script execution |
-| RSS Parsing | [`rss-parser`](https://www.npmjs.com/package/rss-parser) | News feeds parse karna |
+| RSS Parsing | [`rss-parser`](https://www.npmjs.com/package/rss-parser) | News feeds parse karna (5 sources — BBC, Al Jazeera, Dawn, Geo News, ARY News) |
+| News Aggregation (optional) | [NewsAPI.org](https://newsapi.org) (`newsapi.js`) | Keyword-based news search (e.g. `"technology"`) as an additional source; skipped if `NEWS_API_KEY` unset |
 | Database | [Supabase](https://supabase.com) (Postgres + JS client `@supabase/supabase-js`) | News data storage |
 | AI / LLM | [Google Gemini API](https://ai.google.dev) — model `gemini-3.5-flash-lite` | Urdu translation, summary, categorization, post generation |
 | Image Generation | [Pollinations.ai](https://pollinations.ai) (on-the-fly image URL) | AI image prompt se image URL |

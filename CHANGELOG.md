@@ -23,6 +23,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). Versions abhi 
 ### Changed (Phase 2)
 - **Reuters excluded** from the source list: their public RSS feeds were discontinued around 2020; candidate feed URLs were verified via `curl` to return a 404 or a marketing page rather than valid RSS.
 
+### Added (pre-Phase-3 — NewsAPI.org source)
+- New `newsapi.js` module: `fetchNewsFromNewsApi(query, options)` — a standalone client for NewsAPI.org's `/v2/everything` and `/v2/top-headlines` endpoints. Reads `NEWS_API_KEY` from the environment (never hardcoded), returns a clean `{title, description, url, urlToImage}` array, and distinguishes network errors from NewsAPI's own error responses.
+- `index.js`: NewsAPI wired in as a 6th, optional collector source (`collectNewsApiItems()`), skipped automatically (info log, not an error) if `NEWS_API_KEY` isn't set.
+- Tested: missing key, invalid query, invalid key against the real NewsAPI (live), simulated network failure, and mocked success-path mapping all verified. **Not tested**: success path against real NewsAPI data — no real `NEWS_API_KEY` was available in the development environment.
+
 ### Fixed (Phase 1 — Stability & Bug Fixes)
 - Duplicate news items are now actually skipped (previously detected but the skip `return` was commented out).
 - Bot now processes up to 5 fresh RSS items per run instead of only `feed.items[0]`.

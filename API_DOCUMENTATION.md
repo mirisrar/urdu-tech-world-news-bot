@@ -17,6 +17,16 @@ Yeh project abhi ek script hai — koi khud ka public/REST API expose nahi karta
 - **Usage**: `parser.parseURL(url)` returns `feed.items[]`, each with `title`, `link`, etc. `collectItems()` calls this once per configured source, independently (a failure on one source doesn't block the others).
 - **Reuters excluded**: their public RSS feeds were discontinued around 2020; candidate URLs were verified to 404/return non-RSS content. See `PROJECT_ROADMAP.md` Phase 2.
 
+### 1.1b NewsAPI.org (optional additional source)
+
+- **Client**: `newsapi.js` — `fetchNewsFromNewsApi(query, options)`.
+- **Endpoint**: `https://newsapi.org/v2/everything` (default) or `https://newsapi.org/v2/top-headlines` (`options.endpoint`).
+- **Auth**: `X-Api-Key: <NEWS_API_KEY>` header.
+- **Method**: `GET`, query params `q`, `pageSize`, and (for `/everything`) `language`/`sortBy`.
+- **Usage in the bot**: `collectNewsApiItems()` calls this once per configured query (`NEWS_API_QUERIES` in `index.js`, default `["technology"]`) and adapts each returned article (`{title, description, url, urlToImage}`) to the `{title, link}` shape the rest of the pipeline expects.
+- **Optional by design**: if `NEWS_API_KEY` isn't set, this source is skipped with an info log — not an error. Nothing else in the bot depends on it.
+- **Error handling**: distinguishes network failures from NewsAPI's own error responses (`{status:"error", code, message}` with a non-2xx HTTP status, e.g. `apiKeyInvalid`, `apiKeyMissing`, rate limiting) — see `newsapi.js` for details.
+
 ### 1.2 Gemini API (`generateContent`)
 
 - **Endpoint**: `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent`
@@ -90,6 +100,7 @@ Once Phase 6 (Website) and Phase 7 (Admin Dashboard) begin, this project will li
 | `SUPABASE_URL` | Supabase client | Yes |
 | `SUPABASE_ANON_KEY` | Supabase client | Yes |
 | `GEMINI_API_KEY` | Gemini API auth | Yes |
+| `NEWS_API_KEY` | NewsAPI.org auth | No — optional source, skipped if unset |
 | `FACEBOOK_PAGE_TOKEN` (planned) | Facebook publisher | Phase 4 |
 | `TELEGRAM_BOT_TOKEN` (planned) | Telegram publisher | Phase 4 |
 | `WHATSAPP_API_TOKEN` (planned) | WhatsApp publisher | Phase 4 |
