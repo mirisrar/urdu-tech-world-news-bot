@@ -2,13 +2,14 @@
 
 ## 1. Secrets Management
 
-- **Never hardcode** API keys/tokens in source code. Current codebase correctly uses `process.env.*` for `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `GROQ_API_KEY` — maintain this pattern for all future secrets (Facebook, Telegram, WhatsApp, X tokens).
+- **Never hardcode** API keys/tokens in source code. Current codebase correctly uses `process.env.*` for `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `GEMINI_API_KEY` — maintain this pattern for all future secrets (Facebook, Telegram, WhatsApp, X tokens).
 - Secrets live in **GitHub Actions Secrets** (production) and local `.env` (development, never committed — ensure `.gitignore` includes `.env`).
 - **Rotate keys periodically**, especially if a key was ever accidentally exposed in logs or a commit.
+- **Migration note**: this project switched its AI provider from Groq to Gemini. The old `GROQ_API_KEY` GitHub Actions secret is no longer used by `news.yml` and can be removed; a new `GEMINI_API_KEY` secret must be added before the workflow will run successfully (see `DEPLOYMENT_GUIDE.md`).
 
-### ⚠️ Immediate Action Item
+### ✅ Resolved (Phase 1)
 
-The current `index.js` logs `GROQ_API_KEY?.length` and dumps the full raw Groq API response to console (`console.log(JSON.stringify(data, null, 2))`). While this doesn't leak the key value itself, it's a bad habit that risks leaking sensitive data in logs — **remove debug logging like this before it grows to include actually sensitive fields** (this is called out in `PROJECT_ROADMAP.md` Phase 1 and `CODING_STANDARDS.md` §5).
+The current `index.js` previously logged `GROQ_API_KEY?.length` and dumped the full raw AI API response to console (`console.log(JSON.stringify(data, null, 2))`). While this didn't leak the key value itself, it was a bad habit that risked leaking sensitive data in logs. This has been **fixed** — debug dumps were removed and replaced with structured logging (see `PROJECT_ROADMAP.md` Phase 1 and `CODING_STANDARDS.md` §5). Keep this fixed as new secrets (Facebook, Telegram, etc.) are added in Phase 4 — never log token values or lengths.
 
 ## 2. Supabase / Database Security
 
@@ -54,5 +55,5 @@ As Facebook/Telegram/WhatsApp/X integrations are added:
 
 ## 8. Incident Response (Basic Plan)
 
-- If a key is leaked: rotate immediately (Supabase/Groq/social platform dashboards), then invalidate the old key.
+- If a key is leaked: rotate immediately (Supabase/Google AI Studio/social platform dashboards), then invalidate the old key.
 - If bad content gets published: have a documented manual "unpublish" path (even if just a direct DB update initially, until Phase 7 dashboard exists) to remove it from website/social channels quickly.

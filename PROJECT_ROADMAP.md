@@ -1,6 +1,6 @@
 # Roadmap — Urdu Tech & World News Bot
 
-Yeh roadmap current codebase (RSS fetch → Groq AI translation/summary → Supabase storage → GitHub Actions cron) ke upar based hai, aur ideal end-to-end flow ke mutabiq 9 phases mein structured hai.
+Yeh roadmap current codebase (RSS fetch → Gemini AI translation/summary → Supabase storage → GitHub Actions cron) ke upar based hai, aur ideal end-to-end flow ke mutabiq 9 phases mein structured hai.
 
 ## Target Flow
 
@@ -40,7 +40,7 @@ Analytics
 ## Phase 0 — Current State (✅ Done)
 
 - [x] BBC RSS feed se news fetch (`rss-parser`)
-- [x] Groq LLM (`llama-3.3-70b-versatile`) se Urdu translation + summary + article + hashtags + Facebook post + image prompt generate karna
+- [x] AI (Gemini `gemini-3.5-flash-lite`, originally Groq) se Urdu translation + summary + article + hashtags + Facebook post + image prompt generate karna
 - [x] Supabase mein `news` table mein data save karna
 - [x] GitHub Actions cron job (har ghante) se automation
 
@@ -53,13 +53,14 @@ Pehle jo bana hai usay reliable banao, tabhi upar naya kaam karna faida dega.
 - [x] **Duplicate bug fix**: `existing.length > 0` check ke baad `return;` ko actually enable karo (abhi comment out hai).
 - [x] **Multi-item processing**: `feed.items[0]` ki jagah loop lagao (top 5–10 items), taake sirf headline hi baar baar process na ho.
 - [x] **Per-item error isolation**: Ek item fail ho to pura run crash na ho, baaki items continue hon.
-- [x] **Retry logic**: Groq API ya Supabase call fail ho to 1–2 retries with backoff.
+- [x] **Retry logic**: AI API ya Supabase call fail ho to 1–2 retries with backoff.
 - [x] **Logging cleanup**: Debug dumps (API key length, raw JSON) hata kar structured, concise logs rakho.
 - [x] **AI response validation**: Format match na ho to item skip/log karo, empty strings DB mein save na karo.
+- [x] **(Bonus, pre-Phase-2) AI provider migration**: Groq → Gemini (`gemini-3.5-flash-lite`). See `AI_PIPELINE.md` §"Why Gemini" for reasoning.
 
 **Done criteria**: Bot bina duplicate ya crash ke, multiple fresh news items reliably process kar sake.
 
-**Status**: Code implemented in `index.js` (see PR: `cursor/phase1-stability-fixes-2a5f`). Pending: manual verification against live Supabase/Groq secrets before considering fully done (no automated tests exist yet — see `TESTING_GUIDE.md`).
+**Status**: Code implemented in `index.js` (see PR: `cursor/phase1-stability-fixes-2a5f`). Pending: manual verification against live Supabase/Gemini secrets before considering fully done (no automated tests exist yet — see `TESTING_GUIDE.md`). **Action needed**: add `GEMINI_API_KEY` GitHub Actions secret (replaces `GROQ_API_KEY`).
 
 ---
 
@@ -68,7 +69,7 @@ Pehle jo bana hai usay reliable banao, tabhi upar naya kaam karna faida dega.
 - [ ] RSS sources ko config array mein rakho (BBC, Reuters, Dawn, Geo, ARY, Al Jazeera, etc.) — hardcoded single URL hatao.
 - [ ] Har source ke liye `source` field DB mein already hai — sirf loop se sab feeds process karo.
 - [ ] Category-wise source mapping (Tech, World, Business, Sports) agar niche-specific audience chahiye.
-- [ ] Groq calls ke beech rate-limiting/throttling (free-tier limits se bachne ke liye).
+- [ ] Gemini calls ke beech rate-limiting/throttling (free-tier quota se bachne ke liye).
 
 **Done criteria**: Bot 3+ independent sources se news collect kare, bina ek dusre ko block kiye.
 
@@ -170,6 +171,41 @@ Yeh project ka core/differentiating feature hai — isay apna dedicated phase mi
 5. **Phase 5** — Image Pipeline (publishing ko polish karta hai).
 6. **Phase 6** — Website Integration.
 7. **Phase 7 → Phase 9** — Jab base automation stable ho jaye, tab admin tooling, monitoring, aur scale par jao.
+
+---
+
+## Progress Tracking / Completion Estimate
+
+Har phase ko project ke overall scope ka ek weight diya gaya hai (bara/critical phases zyada weight, chhote/low-priority phases kam weight) — taake "kitna % complete hai" ka ek meaningful (sirf "9 mein se 2 phase" jaisa naive count nahi) answer mil sake.
+
+| Phase | Weight | Status |
+|---|---|---|
+| Phase 0 — Foundation (MVP pipeline) | 5% | ✅ Done |
+| Phase 1 — Stability & Bug Fixes (+ Gemini migration) | 10% | ✅ Done |
+| Phase 2 — Multi-Source Collection | 10% | ⏳ Next |
+| Phase 3 — AI Processing Pipeline (structured JSON, SEO title) | 15% | ❌ Not started |
+| Phase 4 — Social Media Publishing Layer | 20% | ❌ Not started |
+| Phase 5 — Image Pipeline | 10% | ❌ Not started |
+| Phase 6 — Website Integration | 15% | ❌ Not started |
+| Phase 7 — Admin Dashboard | 8% | ❌ Not started |
+| Phase 8 — Monitoring & Analytics | 4% | ❌ Not started |
+| Phase 9 — Scalability & Optimization | 3% | ❌ Not started |
+| **Total** | **100%** | |
+
+**Abhi tak (Phase 0 + Phase 1 done)**: **15% complete**.
+
+**Phase 2 complete hone ke baad**: **25% complete** (5% + 10% + 10%).
+
+### Yeh weights kyun aise hain?
+
+- **Phase 4 (Publishing) sabse bara weight (20%)** — 4 alag channels (Facebook, Telegram, WhatsApp, X), har ek apna auth/API/idempotency logic chahta hai — sabse zyada implementation surface area.
+- **Phase 3 (AI Pipeline) aur Phase 6 (Website) 15% each** — dono critical/high priority hain aur substantial kaam hain (structured AI output + validation; full website ya integration layer).
+- **Phase 7-9 (Dashboard, Monitoring, Scale) kam weight** — valuable hain but project ke "core value" (news collect → translate → publish) ke baghair bhi system chal sakta hai; yeh polish/maturity phases hain.
+- Yeh weights **estimates hain, exact science nahi** — jaise-jaise actual implementation ka scope clear hota jaye (especially Phase 6's "existing vs. naya website" open question), inko revise karna theek hai.
+
+### Kaise update karein
+
+Jab bhi koi phase complete ho, is table mein status update karo aur cumulative % recalculate karo — taake yeh roadmap hamesha ek accurate "hum kahan hain" snapshot de.
 
 ---
 

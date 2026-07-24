@@ -14,12 +14,14 @@ Yeh project currently ek **serverless-style deployment** use kar raha hai — ko
 ### Setup Steps (for a new environment/fork)
 
 1. **Supabase project banao** (supabase.com) — `news` table create karo (see `DATABASE_SCHEMA.md`).
-2. **Groq API key** generate karo (console.groq.com).
+2. **Gemini API key** generate karo (aistudio.google.com → "Get API key").
 3. GitHub repo Settings → Secrets and variables → Actions mein add karo:
    - `SUPABASE_URL`
    - `SUPABASE_ANON_KEY`
-   - `GROQ_API_KEY`
+   - `GEMINI_API_KEY`
 4. Workflow already configured hai — push karne par ya schedule par automatically chalega. Manual test: Actions tab → "News Bot" → "Run workflow".
+
+> **Migration note**: yeh project pehle Groq use karta tha, ab Gemini par migrate ho gaya hai (see `AI_PIPELINE.md` §"Why Gemini"). Agar aapke repo mein purana `GROQ_API_KEY` secret already set hai, usay `GEMINI_API_KEY` se replace/add karo — workflow ab isay use karta hai, `GROQ_API_KEY` ab redundant hai.
 
 ## 2. Scaling Considerations (as sources/frequency grow — Phase 2, 9)
 

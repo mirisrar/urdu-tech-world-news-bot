@@ -15,7 +15,7 @@ node index.js
 ```
 SUPABASE_URL=
 SUPABASE_ANON_KEY=
-GROQ_API_KEY=
+GEMINI_API_KEY=
 ```
 
 > `.env` file **kabhi commit na karo**. `.env.example` mein sirf key names rakho.
@@ -64,7 +64,7 @@ Yeh ensure karega ke `main` mein hamesha lint-clean, tested code hi merge ho.
 
 ## 5. Testing Before Merge
 
-- Manual verification abhi bhi zaroori hai (Groq API real call, Supabase real insert) jab tak proper mocking/test suite exist na kare (`TESTING_GUIDE.md`).
+- Manual verification abhi bhi zaroori hai (Gemini API real call, Supabase real insert) jab tak proper mocking/test suite exist na kare (`TESTING_GUIDE.md`).
 - Destructive DB operations ko staging/dev Supabase project par test karo, production project par nahi.
 
 ## 6. Handling Secrets in Workflows

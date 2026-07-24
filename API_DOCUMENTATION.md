@@ -11,26 +11,26 @@ Yeh project abhi ek script hai — koi khud ka public/REST API expose nahi karta
 - **Auth**: None
 - **Usage**: `parser.parseURL(url)` returns `feed.items[]`, each with `title`, `link`, etc.
 
-### 1.2 Groq Chat Completions API
+### 1.2 Gemini API (`generateContent`)
 
-- **Endpoint**: `https://api.groq.com/openai/v1/chat/completions`
+- **Endpoint**: `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent`
 - **Method**: `POST`
-- **Auth**: `Authorization: Bearer <GROQ_API_KEY>` header
-- **Model**: `llama-3.3-70b-versatile`
+- **Auth**: `x-goog-api-key: <GEMINI_API_KEY>` header
+- **Model**: `gemini-3.5-flash-lite` (see `AI_PIPELINE.md` §"Why Gemini" for why this model/provider was chosen — this project previously used Gemini, moved to Groq, and has now moved back to Gemini)
 - **Request body** (current):
 
 ```json
 {
-  "model": "llama-3.3-70b-versatile",
-  "messages": [
-    { "role": "user", "content": "<prompt with headline>" }
-  ],
-  "temperature": 0.7
+  "contents": [
+    { "parts": [{ "text": "<prompt with headline>" }] }
+  ]
 }
 ```
 
-- **Response**: Standard OpenAI-compatible chat completion; content extracted via `data.choices[0].message.content`.
-- **Output format (current, free-text, regex-parsed)** — see `AI_PIPELINE.md` for full prompt/schema and the planned move to structured JSON output.
+  No `generationConfig`/`temperature` override is sent — Google recommends keeping default sampling parameters for Gemini 3.x models.
+
+- **Response**: content extracted via `data.candidates[0].content.parts[0].text`. If the request was safety-filtered, `data.promptFeedback.blockReason` is set instead of a candidate — the bot treats this as an error (see `index.js`).
+- **Output format (current, free-text, regex-parsed)** — see `AI_PIPELINE.md` for full prompt/schema and the planned move to structured JSON output (Gemini supports a native `responseMimeType: "application/json"` mode for this — not yet used).
 
 ### 1.3 Supabase (Postgres REST via `@supabase/supabase-js`)
 
@@ -83,7 +83,7 @@ Once Phase 6 (Website) and Phase 7 (Admin Dashboard) begin, this project will li
 |---|---|---|
 | `SUPABASE_URL` | Supabase client | Yes |
 | `SUPABASE_ANON_KEY` | Supabase client | Yes |
-| `GROQ_API_KEY` | Groq API auth | Yes |
+| `GEMINI_API_KEY` | Gemini API auth | Yes |
 | `FACEBOOK_PAGE_TOKEN` (planned) | Facebook publisher | Phase 4 |
 | `TELEGRAM_BOT_TOKEN` (planned) | Telegram publisher | Phase 4 |
 | `WHATSAPP_API_TOKEN` (planned) | WhatsApp publisher | Phase 4 |

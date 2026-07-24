@@ -8,7 +8,7 @@
 Yeh ek automated news aggregation aur AI content pipeline hai jo:
 
 1. Dunya bhar ke news sources (RSS feeds) se latest headlines collect karta hai.
-2. Har headline ko AI (Groq LLM) se process karta hai — Urdu translation, summary, category, hashtags, aur Facebook-ready post generate karta hai.
+2. Har headline ko AI (Google Gemini LLM) se process karta hai — Urdu translation, summary, category, hashtags, aur Facebook-ready post generate karta hai.
 3. Processed content ko database (Supabase) mein store karta hai.
 4. Aage jaake (roadmap ke mutabiq) yeh content automatically website (Nexora News Urdu) aur social media channels (Facebook, Telegram, WhatsApp, X) par publish karega.
 
@@ -28,7 +28,7 @@ Yeh ek automated news aggregation aur AI content pipeline hai jo:
 | Component | Status |
 |---|---|
 | RSS collection (single source: BBC) | ✅ Working (multi-item per run) |
-| AI processing (Groq, Urdu translation/summary) | ✅ Working (validated, retried on failure; JSON-structured output still pending — Phase 3) |
+| AI processing (Gemini, Urdu translation/summary) | ✅ Working (validated, retried on failure; JSON-structured output still pending — Phase 3) |
 | Database storage (Supabase) | ✅ Working |
 | Automation (GitHub Actions cron, hourly) | ✅ Working |
 | Duplicate prevention | ✅ Fixed (Phase 1) |

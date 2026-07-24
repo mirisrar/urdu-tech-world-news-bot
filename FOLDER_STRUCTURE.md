@@ -30,7 +30,7 @@ urdu-tech-world-news-bot/
 │   │   └── sources.config.js     # (Phase 2) list of RSS feeds + category mapping
 │   │
 │   ├── ai/
-│   │   ├── processor.js          # Groq call + response handling (Phase 3)
+│   │   ├── processor.js          # Gemini call + response handling (Phase 3)
 │   │   ├── prompts.js            # Versioned prompt templates
 │   │   └── schema.js             # Output validation schema (e.g. zod)
 │   │

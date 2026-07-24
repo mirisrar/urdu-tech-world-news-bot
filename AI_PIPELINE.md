@@ -4,10 +4,32 @@ Yeh document AI processing step (bot ka "brain", Phase 3 of roadmap) ko cover ka
 
 ## Model
 
-- **Provider**: Groq
-- **Model**: `llama-3.3-70b-versatile`
-- **Temperature**: `0.7`
-- **Why Groq**: Fast inference (important for frequent/hourly automation), generous free tier, OpenAI-compatible API shape.
+- **Provider**: Google Gemini
+- **Model**: `gemini-3.5-flash-lite`
+- **Sampling**: default (no `temperature`/`top_p`/`top_k` override — see "Why Gemini" below)
+- **Auth**: `x-goog-api-key` header with `GEMINI_API_KEY`
+
+### Why Gemini (and not Groq)?
+
+The bot originally used Groq (`llama-3.3-70b-versatile`) for fast, low-cost inference. It has since been migrated to Gemini for a few concrete reasons:
+
+1. **Model fit for the exact task**: Google explicitly recommends `gemini-3.5-flash-lite` for *"high-volume data analysis, document extraction, and structured JSON parsing"* — which is almost a literal description of what this bot does (translate + classify + summarize many headlines per run, and Phase 3 wants strict JSON output). It's the fastest/cheapest model in Google's current lineup, which fits an hourly, multi-item cron job well (see `PROJECT_ROADMAP.md` Phase 2/9 on cost/throughput considerations).
+2. **Multilingual/Urdu quality**: Gemini's training and evaluation explicitly cover a very broad set of languages including Urdu, which matters directly for translation and summary quality — the core value this bot delivers. This is a qualitative reason, worth validating empirically (see "Verifying Output Quality" below) rather than assuming.
+3. **One vendor for text *and* future image generation**: Google's Gemini/Imagen family can also generate images. Phase 5 (`DATABASE_SCHEMA.md`/`PROJECT_ROADMAP.md`) needs a permanent, reliable image pipeline — today it depends on an unauthenticated third-party service (Pollinations.ai) with no uptime guarantee. Consolidating AI text + image generation under one Google API key/billing account is a plausible future simplification (not implemented yet — still tracked as Phase 5), whereas Groq is text-only.
+4. **Structured output support**: Gemini's `generationConfig.responseMimeType: "application/json"` (with an optional `responseSchema`) gives a native path to Phase 3's "move to structured JSON output" goal, without needing a separate library. This isn't used yet (the current migration deliberately kept the existing free-text prompt/regex-parsing pipeline unchanged, to isolate the provider swap from other changes) but it's a natural next step when Phase 3 starts.
+
+### ⚠️ Important context: this project tried Gemini before
+
+Git history (`d66f19e`, `17e4d00`, `ddcf0c3`, and the "Update index.js" commits around them) shows this project **already used Gemini earlier** (`gemini-2.5-flash-lite` → `gemini-2.5-flash` → `gemini-2.0-flash`, including a commit that queried the `/v1beta/models` list endpoint to debug which model names were actually available), before switching to Groq. This suggests the earlier attempt hit **model-availability/naming churn** issues — Gemini model IDs have changed multiple times, and picking a model your API key/quota doesn't actually have access to fails at request time with a 404, not at development time.
+
+**What's different this time**:
+- The model ID (`gemini-3.5-flash-lite`) is Google's current (mid-2026) stable, generally-available model — not a preview/experimental one — reducing the chance it's renamed or retired soon.
+- `callGemini()` now surfaces API errors clearly (status code + response body) via structured logging, and `analyzeNews()` retries with backoff — so if a model ID does become invalid again, it will fail loudly and visibly in the GitHub Actions logs instead of silently, and won't take down the whole run (Phase 1 fix).
+- If Google renames/deprecates this model again, only the `GEMINI_MODEL` constant in `index.js` needs to change (see `AI_PIPELINE.md` §"Model" and `index.js`) — check `https://ai.google.dev/gemini-api/docs/models` for the current model list before assuming a name is still valid.
+
+### Verifying Output Quality (recommended before fully trusting Gemini here)
+
+Since this is a genuine provider switch (not just a config tweak), a few Gemini-processed articles should be manually spot-checked against what Groq previously produced for the same headlines — specifically Urdu translation accuracy/fluency and whether the model reliably follows the `CATEGORY:`/`URDU_TITLE:`/etc. label format. If Gemini deviates from the expected format more often than Groq did, that's a signal to either adjust the prompt or move up the priority of Phase 3's structured-JSON-output work.
 
 ## Current Prompt (as implemented in `index.js`)
 
@@ -68,7 +90,7 @@ Instead of free-text with labeled fields, request (and validate) a JSON object d
 }
 ```
 
-This can be done via Groq's JSON mode / `response_format: { type: "json_object" }` (if supported by the model) or by instructing the model clearly and parsing with `JSON.parse` inside a try/catch, with a fallback/retry on parse failure.
+This can be done via Gemini's native JSON mode (`generationConfig: { responseMimeType: "application/json", responseSchema: {...} }`) or by instructing the model clearly and parsing with `JSON.parse` inside a try/catch, with a fallback/retry on parse failure.
 
 ### 2. Schema Validation
 
@@ -88,5 +110,5 @@ Add a lightweight check (keyword filter or a second, cheap moderation-focused AI
 
 ## Cost & Rate Considerations
 
-- Each processed article = 1 Groq API call. As Phase 2 (multi-source) and Phase 1 (multi-item per run) land, call volume will increase — monitor free-tier limits and add throttling/backoff (see `PROJECT_ROADMAP.md` Phase 2).
+- Each processed article = 1 Gemini API call. As Phase 2 (multi-source) and Phase 1 (multi-item per run) land, call volume will increase — monitor Gemini's rate limits/quota (Google AI Studio free tier has per-minute/per-day request caps) and add throttling/backoff (see `PROJECT_ROADMAP.md` Phase 2).
 - Batch multiple headlines into fewer calls where feasible (e.g. one call analyzing N headlines) as a future cost optimization — not required for MVP correctness.

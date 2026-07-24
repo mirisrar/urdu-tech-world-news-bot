@@ -67,7 +67,7 @@ Given a sample RSS feed item shape, verify the collector extracts `title`/`link`
 
 ### 3. Mocking External Services
 
-- **Groq API**: mock `fetch` (e.g. `vi.fn()` / `msw`) to return canned responses — never hit the real API in tests (cost + flakiness).
+- **Gemini API**: mock `fetch` (e.g. `vi.fn()` / `msw`) to return canned responses — never hit the real API in tests (cost + flakiness).
 - **Supabase**: use a test double / mock client rather than a real Supabase project in unit tests. For integration tests, consider a dedicated test Supabase project (never run destructive tests against production).
 - **RSS feeds**: use fixture XML files instead of live network calls.
 
@@ -81,7 +81,7 @@ Add a `test` step to the CI workflow (see `DEVELOPMENT_WORKFLOW.md` §4) so test
 
 ### 6. What NOT to Test (at this stage)
 
-- Don't write tests against the real Groq/Supabase/Pollinations APIs in CI — slow, costly, flaky, and not deterministic.
+- Don't write tests against the real Gemini/Supabase/Pollinations APIs in CI — slow, costly, flaky, and not deterministic.
 - Don't over-invest in UI testing before Phase 6/7 UI actually exists.
 
 ## Manual Testing Checklist (until automated tests exist)

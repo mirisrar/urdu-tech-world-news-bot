@@ -1,12 +1,12 @@
 # Urdu Tech & World News Bot
 
-Automated news aggregation aur AI pipeline — RSS se news collect karta hai, Groq LLM se Urdu translation/summary/categorization/Facebook-post generate karta hai, aur Supabase mein store karta hai. GitHub Actions cron se hourly automatically chalta hai.
+Automated news aggregation aur AI pipeline — RSS se news collect karta hai, Google Gemini LLM se Urdu translation/summary/categorization/Facebook-post generate karta hai, aur Supabase mein store karta hai. GitHub Actions cron se hourly automatically chalta hai.
 
 ## Quick Start
 
 ```bash
 npm install
-cp .env.example .env   # SUPABASE_URL, SUPABASE_ANON_KEY, GROQ_API_KEY fill karo
+cp .env.example .env   # SUPABASE_URL, SUPABASE_ANON_KEY, GEMINI_API_KEY fill karo
 node index.js
 ```
 

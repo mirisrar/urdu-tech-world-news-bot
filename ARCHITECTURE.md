@@ -26,7 +26,7 @@
                                ▼
                     ┌──────────────────────┐
                     │   AI Processor         │  (Phase 3)
-                    │  - Groq LLM call       │
+                    │  - Gemini LLM call     │
                     │  - Urdu translation    │
                     │  - summary/category    │
                     │  - hashtags/SEO title  │
@@ -69,7 +69,7 @@ Fetches RSS feeds from configured sources (currently hardcoded single BBC feed i
 Queries Supabase `news` table by `url` before processing, to avoid reprocessing/re-publishing the same article. Currently has a bug (check exists but skip action is disabled) — fixed in Phase 1.
 
 ### 3. AI Processor
-Sends the headline to Groq's `llama-3.3-70b-versatile` model with a structured prompt, requesting category, Urdu title/summary/article, hashtags, Facebook post text, and an image prompt. Parses the free-text response via regex today; Phase 3 moves this to strict structured (JSON) output for reliability.
+Sends the headline to Google's Gemini API (`gemini-3.5-flash-lite`) with a structured prompt, requesting category, Urdu title/summary/article, hashtags, Facebook post text, and an image prompt. Parses the free-text response via regex today; Phase 3 moves this to strict structured (JSON) output for reliability (Gemini has native JSON-mode support for this). See `AI_PIPELINE.md` for why Gemini was chosen over Groq (which this project used until this migration).
 
 ### 4. Image Pipeline (planned — Phase 5)
 Currently constructs an on-the-fly `pollinations.ai` URL from the AI's image prompt (not downloaded/stored). Phase 5 adds downloading, optimizing, and storing images permanently (Supabase Storage or similar).

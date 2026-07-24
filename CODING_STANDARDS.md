@@ -26,7 +26,7 @@ const result = await fetchSomething();
 ## 3. Naming Conventions
 
 - Variables/functions: `camelCase` (e.g. `analyzeNews`, `urduTitle`).
-- Constants (module-level, unchanging): `UPPER_SNAKE_CASE` (e.g. `GROQ_API_URL`).
+- Constants (module-level, unchanging): `UPPER_SNAKE_CASE` (e.g. `GEMINI_API_URL`).
 - Files: `kebab-case.js` ya `camelCase.js` — jo bhi choose karo, **consistent** rakho across the repo (current single-file setup ne yeh decide nahi kiya, naya code likhte waqt decide karo).
 - Database field access: match Supabase column names exactly (`snake_case`, e.g. `urdu_title`) — mixing case conventions bugs create karta hai.
 
@@ -38,7 +38,7 @@ const result = await fetchSomething();
 
 ## 5. Logging
 
-- Production code mein **debug dumps hata do** (e.g. `console.log("GROQ KEY LENGTH:", ...)`, full raw API response dumps) — yeh sensitive info leak aur noisy logs create karte hain.
+- Production code mein **debug dumps hata do** (e.g. `console.log("GEMINI KEY LENGTH:", ...)`, full raw API response dumps) — yeh sensitive info leak aur noisy logs create karte hain.
 - Use levels: `info` (normal flow), `warn` (recoverable issue), `error` (failure). Simple wrapper (`src/lib/logger.js`, see `FOLDER_STRUCTURE.md`) is enough — full logging library zaroori nahi is scale par.
 
 ## 6. Secrets & Config
