@@ -2,25 +2,29 @@
 
 Yeh document specifically bot ke **execution pipeline** (`index.js`) ko detail mein explain karta hai — kya current implementation hai, aur kya improvements planned hain.
 
-## Current Execution Flow (`index.js`, post Phase 1 fixes)
+## Current Execution Flow (`index.js`, post Phase 1 + Phase 2)
 
 ```
 run()
   │
-  ├── 1. parser.parseURL(BBC_RSS_URL)              → feed.items[]
-  ├── 2. items = feed.items.slice(0, MAX_ITEMS_PER_RUN)   → top 5 items (was: only items[0])
-  ├── for each item:
-  │     ├── 3. try:
+  ├── 1. collectItems():
+  │     └── for each configured source (SOURCES — BBC, Al Jazeera, Dawn, Geo News, ARY News):
+  │           ├── try: parser.parseURL(source.url) → take top MAX_ITEMS_PER_SOURCE (3) items
+  │           └── catch: log error, continue to next source (one bad source doesn't block others)
+  │     └── cap combined result to MAX_ITEMS_PER_RUN (10) across all sources
+  ├── for each { item, sourceName }:
+  │     ├── 2. try:
   │     │     ├── Supabase: SELECT url WHERE url = item.link
-  │     │     │      └── if exists → skip this item (fixed: actually skips now)
+  │     │     │      └── if exists → skip this item
   │     │     ├── analyzeNews(item.title)
   │     │     │      └── POST to Gemini API, with retry-with-backoff (up to 2 retries)
-  │     │     ├── parse AI response (regex, now captures multi-line fields fully)
+  │     │     ├── parse AI response (regex, captures multi-line fields fully)
   │     │     ├── validate required fields present → else retry, then skip+log
   │     │     ├── construct image_url from image_prompt (Pollinations.ai)
-  │     │     └── Supabase: INSERT into news table
-  │     └── catch: log error, continue to next item (fixed: no longer aborts whole run)
-  └── log run summary (processed / skipped / failed counts)
+  │     │     ├── Supabase: INSERT into news table with source = sourceName
+  │     │     └── sleep(AI_CALL_SPACING_MS) — throttle before the next AI call
+  │     └── catch: log error, continue to next item (no longer aborts whole run)
+  └── log run summary (processed / skipped / failed counts, sources count)
 ```
 
 ## Trigger
@@ -44,20 +48,23 @@ Also implemented alongside Phase 1 (pre-Phase-2 prep, same PR):
 
 6. **AI provider migrated from Groq to Gemini** (`gemini-3.5-flash-lite`) — see `AI_PIPELINE.md` §"Why Gemini" for the reasoning, including why an earlier Gemini attempt in this project's history was abandoned and what's different this time.
 
+Fixed in Phase 2 (see PR `cursor/phase2-multi-source-2a5f`):
+
+7. ~~**Single source**~~ — ✅ Fixed. 5 sources configured (BBC, Al Jazeera, Dawn, Geo News, ARY News), each fetched independently with per-source failure isolation. Reuters was evaluated and excluded — its public RSS feeds are no longer live (see `PROJECT_ROADMAP.md` Phase 2).
+
 Still open (later phases):
 
-7. **Single source** — the RSS URL is still hardcoded to BBC; no loop over multiple feeds yet — Phase 2.
 8. **Free-text AI output** — parsing is more robust now, but still regex-based rather than a strict JSON schema — Phase 3 (Gemini's native JSON mode makes this easier than it would have been with Groq).
 
-## Target Bot Pipeline (Post Phase 2-3)
+## Target Bot Pipeline (Post Phase 3+)
 
 ```
 run()
   │
-  ├── for each configured source (Phase 2):
+  ├── for each configured source (done — Phase 2):
   │     ├── fetch feed
-  │     ├── for each item (top N, Phase 1):
-  │     │     ├── duplicate check → skip if exists (Phase 1 fix)
+  │     ├── for each item (top N, done — Phase 1):
+  │     │     ├── duplicate check → skip if exists (done — Phase 1)
   │     │     ├── try:
   │     │     │     ├── AI Processor call (Phase 3, structured JSON output)
   │     │     │     ├── validate response schema

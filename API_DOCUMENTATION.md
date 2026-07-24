@@ -4,12 +4,18 @@ Yeh project abhi ek script hai — koi khud ka public/REST API expose nahi karta
 
 ## 1. External APIs (Currently Used)
 
-### 1.1 RSS Feed (BBC)
+### 1.1 RSS Feeds (multi-source, Phase 2)
 
-- **Endpoint**: `https://feeds.bbci.co.uk/news/rss.xml`
+- **Endpoints** (configured in the `SOURCES` array in `index.js`):
+  - BBC — `https://feeds.bbci.co.uk/news/rss.xml`
+  - Al Jazeera — `https://www.aljazeera.com/xml/rss/all.xml`
+  - Dawn — `https://www.dawn.com/feeds/home`
+  - Geo News — `https://www.geo.tv/rss/1/1`
+  - ARY News — `https://arynews.tv/feed/` (redirects to `/feed`; followed transparently)
 - **Method**: GET (via `rss-parser`'s `parseURL`)
 - **Auth**: None
-- **Usage**: `parser.parseURL(url)` returns `feed.items[]`, each with `title`, `link`, etc.
+- **Usage**: `parser.parseURL(url)` returns `feed.items[]`, each with `title`, `link`, etc. `collectItems()` calls this once per configured source, independently (a failure on one source doesn't block the others).
+- **Reuters excluded**: their public RSS feeds were discontinued around 2020; candidate URLs were verified to 404/return non-RSS content. See `PROJECT_ROADMAP.md` Phase 2.
 
 ### 1.2 Gemini API (`generateContent`)
 

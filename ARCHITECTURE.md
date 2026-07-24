@@ -5,13 +5,15 @@
 ```
                     ┌──────────────────────┐
                     │   RSS Sources         │
-                    │ (BBC, Reuters, Dawn,  │
-                    │  Geo, ARY, Al Jazeera)│
+                    │ (BBC, Al Jazeera,     │
+                    │  Dawn, Geo, ARY —     │
+                    │  Reuters excluded,    │
+                    │  see Phase 2 notes)   │
                     └──────────┬────────────┘
                                │
                                ▼
                     ┌──────────────────────┐
-                    │   News Collector      │  (Phase 1-2)
+                    │   News Collector      │  (✅ Phase 1-2 done)
                     │  - fetch feeds        │
                     │  - normalize items    │
                     └──────────┬────────────┘
@@ -63,7 +65,7 @@
 ## Components
 
 ### 1. News Collector
-Fetches RSS feeds from configured sources (currently hardcoded single BBC feed in `index.js`; Phase 2 makes this config-driven and multi-source).
+Fetches RSS feeds from configured sources — a `SOURCES` array in `index.js` (BBC, Al Jazeera, Dawn, Geo News, ARY News as of Phase 2). Each source is fetched independently; one source failing doesn't block the others. Reuters was evaluated and excluded (public RSS feeds no longer live — see `PROJECT_ROADMAP.md` Phase 2).
 
 ### 2. Duplicate Check
 Queries Supabase `news` table by `url` before processing, to avoid reprocessing/re-publishing the same article. Currently has a bug (check exists but skip action is disabled) — fixed in Phase 1.

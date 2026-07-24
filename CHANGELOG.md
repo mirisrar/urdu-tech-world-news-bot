@@ -13,6 +13,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). Versions abhi 
 - **AI provider migrated from Groq (`llama-3.3-70b-versatile`) to Gemini (`gemini-3.5-flash-lite`)**. Auth changed from `Authorization: Bearer <GROQ_API_KEY>` to `x-goog-api-key: <GEMINI_API_KEY>`. See `AI_PIPELINE.md` §"Why Gemini" for the reasoning and important context (this project used Gemini before, moved to Groq, and has now moved back — see History below).
 - `.github/workflows/news.yml` secret requirement: `GROQ_API_KEY` → `GEMINI_API_KEY` (repo secret must be updated by a maintainer — not something this change can do on its own).
 
+### Added (Phase 2 — Multi-Source News Collection)
+- Config-driven `SOURCES` list replacing the single hardcoded BBC feed: BBC, Al Jazeera, Dawn, Geo News, ARY News (all live-tested with the actual `rss-parser` library before being added).
+- `collectItems()` fetches each source independently — a failure on one source (network error, invalid feed) is logged and skipped without blocking the others.
+- `MAX_ITEMS_PER_SOURCE`/`MAX_ITEMS_PER_RUN` caps and `AI_CALL_SPACING_MS` throttling, so AI-call volume stays bounded as more sources are added.
+- `source` DB column now reflects the actual originating feed per article instead of a hardcoded `"BBC"`.
+- Added `.gitignore` and `package-lock.json` to the code branch (previously only present on the docs branch).
+
+### Changed (Phase 2)
+- **Reuters excluded** from the source list: their public RSS feeds were discontinued around 2020; candidate feed URLs were verified via `curl` to return a 404 or a marketing page rather than valid RSS.
+
 ### Fixed (Phase 1 — Stability & Bug Fixes)
 - Duplicate news items are now actually skipped (previously detected but the skip `return` was commented out).
 - Bot now processes up to 5 fresh RSS items per run instead of only `feed.items[0]`.

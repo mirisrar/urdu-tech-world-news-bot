@@ -64,14 +64,20 @@ Pehle jo bana hai usay reliable banao, tabhi upar naya kaam karna faida dega.
 
 ---
 
-## Phase 2 — Multi-Source News Collection — 🟠 High
+## Phase 2 — Multi-Source News Collection — 🟠 High (✅ Implemented — see PR #3)
 
-- [ ] RSS sources ko config array mein rakho (BBC, Reuters, Dawn, Geo, ARY, Al Jazeera, etc.) — hardcoded single URL hatao.
-- [ ] Har source ke liye `source` field DB mein already hai — sirf loop se sab feeds process karo.
-- [ ] Category-wise source mapping (Tech, World, Business, Sports) agar niche-specific audience chahiye.
-- [ ] Gemini calls ke beech rate-limiting/throttling (free-tier quota se bachne ke liye).
+- [x] RSS sources ko config array mein rakho (BBC, Reuters, Dawn, Geo, ARY, Al Jazeera, etc.) — hardcoded single URL hatao.
+- [x] Har source ke liye `source` field DB mein already hai — sirf loop se sab feeds process karo.
+- [ ] Category-wise source mapping (Tech, World, Business, Sports) agar niche-specific audience chahiye. *(deferred — not required for "3+ sources" done criteria)*
+- [x] Gemini calls ke beech rate-limiting/throttling (free-tier quota se bachne ke liye).
 
 **Done criteria**: Bot 3+ independent sources se news collect kare, bina ek dusre ko block kiye.
+
+**Status**: Implemented — 5 sources configured (BBC, Al Jazeera, Dawn, Geo News, ARY News), each live-tested with the actual `rss-parser` library before committing. `collectItems()` fetches each source independently (fail-soft — one source failing doesn't block the others), with `MAX_ITEMS_PER_SOURCE`/`MAX_ITEMS_PER_RUN` caps and `AI_CALL_SPACING_MS` throttling to bound AI-call volume as sources grow.
+
+**⚠️ Reuters excluded**: Reuters was in the originally proposed source list, but their public RSS feeds were discontinued around 2020 — the documented feed URLs (e.g. `feeds.reuters.com/...`, `reutersagency.com/feed/`) were verified via `curl` to return a 404 or a marketing page, not valid RSS. If Reuters content is genuinely needed later, it would require either a paid Reuters API/syndication agreement or scraping (out of scope for this bot's current approach) — not a simple RSS URL swap.
+
+**Category-wise source mapping deferred**: mapping specific sources to specific categories (e.g. "this feed is Tech-only") wasn't implemented, since the "3+ independent sources" done criteria didn't require it and Phase 3's AI-based category classification already assigns a category per article regardless of source. Revisit if a future need arises (e.g. a source-specific trust/curation policy).
 
 ---
 
@@ -182,8 +188,8 @@ Har phase ko project ke overall scope ka ek weight diya gaya hai (bara/critical 
 |---|---|---|
 | Phase 0 — Foundation (MVP pipeline) | 5% | ✅ Done |
 | Phase 1 — Stability & Bug Fixes (+ Gemini migration) | 10% | ✅ Done |
-| Phase 2 — Multi-Source Collection | 10% | ⏳ Next |
-| Phase 3 — AI Processing Pipeline (structured JSON, SEO title) | 15% | ❌ Not started |
+| Phase 2 — Multi-Source Collection | 10% | ✅ Done |
+| Phase 3 — AI Processing Pipeline (structured JSON, SEO title) | 15% | ⏳ Next |
 | Phase 4 — Social Media Publishing Layer | 20% | ❌ Not started |
 | Phase 5 — Image Pipeline | 10% | ❌ Not started |
 | Phase 6 — Website Integration | 15% | ❌ Not started |
@@ -192,9 +198,9 @@ Har phase ko project ke overall scope ka ek weight diya gaya hai (bara/critical 
 | Phase 9 — Scalability & Optimization | 3% | ❌ Not started |
 | **Total** | **100%** | |
 
-**Abhi tak (Phase 0 + Phase 1 done)**: **15% complete**.
+**Abhi tak (Phase 0 + Phase 1 + Phase 2 done)**: **25% complete** (5% + 10% + 10%).
 
-**Phase 2 complete hone ke baad**: **25% complete** (5% + 10% + 10%).
+**Phase 3 complete hone ke baad**: **40% complete** (25% + 15%).
 
 ### Yeh weights kyun aise hain?
 
