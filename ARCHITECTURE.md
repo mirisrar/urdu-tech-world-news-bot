@@ -52,7 +52,7 @@
               ▼                                 ▼
    ┌────────────────────┐            ┌───────────────────────┐
    │  Website             │            │  Social Media Publisher│
-   │  (Nexora News Urdu)  │  (Phase 6) │  FB/Telegram/WA/X       │  (Phase 4)
+   │  (Nexora News Urdu)  │  (Phase 6) │  FB/Telegram/X/WhatsApp │  (✅ Phase 4 done)
    └──────────┬───────────┘            └───────────┬────────────┘
               │                                    │
               └────────────────┬───────────────────┘
@@ -65,10 +65,10 @@
 ## Components
 
 ### 1. News Collector
-Fetches RSS feeds from configured sources — a `SOURCES` array in `index.js` (BBC, Al Jazeera, Dawn, Geo News, ARY News as of Phase 2). Each source is fetched independently; one source failing doesn't block the others. Reuters was evaluated and excluded (public RSS feeds no longer live — see `PROJECT_ROADMAP.md` Phase 2).
+Fetches items from configured sources: a `SOURCES` array of RSS feeds in `index.js` (BBC, Al Jazeera, Dawn, Geo News, ARY News as of Phase 2), plus an optional NewsAPI.org keyword source. Each source is fetched independently; one source failing doesn't block the others. Reuters was evaluated and excluded (public RSS feeds no longer live — see `PROJECT_ROADMAP.md` Phase 2).
 
 ### 2. Duplicate Check
-Queries Supabase `news` table by `url` before processing, to avoid reprocessing/re-publishing the same article. Currently has a bug (check exists but skip action is disabled) — fixed in Phase 1.
+Queries Supabase `news` table by `url` before processing, to avoid reprocessing/re-publishing the same article. Fixed in Phase 1 (previously detected but didn't actually skip).
 
 ### 3. AI Processor
 Sends the headline to Google's Gemini API (`gemini-3.5-flash-lite`) with a prompt and a `responseSchema` (Phase 3), requesting category, Urdu title/summary/article, an SEO title, hashtags, Facebook post text, and an image prompt as strict structured JSON — Gemini's own API enforces the shape, so the bot just does `JSON.parse` (no more regex). See `AI_PIPELINE.md` for why Gemini was chosen over Groq (which this project used until this migration) and how schema correctness was verified.
@@ -82,19 +82,20 @@ Single `news` table is the system's source of truth (see `DATABASE_SCHEMA.md`). 
 ### 6. Website (planned — Phase 6)
 Nexora News Urdu — will read processed news from Supabase and render Urdu-language pages. Integration approach (existing external site vs. new build) is TBD (see open question in `PROJECT_ROADMAP.md`).
 
-### 7. Social Media Publisher (planned — Phase 4)
-Independent publishers per channel (Facebook Graph API, Telegram Bot API, WhatsApp Business API, X API), each reading unpublished items from the Database and marking them as published once done.
+### 7. Social Media Publisher (✅ Phase 4 done)
+`publishers/` module — one file per channel (Facebook Graph API, Telegram Bot API, X API v2 with manual OAuth1.0a, WhatsApp Business Cloud API) plus an orchestrator (`publishAll()`). Currently called **inline** right after a successful save (not as a separate job reading "unpublished" rows from the Database, which is the longer-term target once a `status` column exists — see Phase 9 notes) — each channel is independently optional and fail-soft. See `PROJECT_ROADMAP.md` Phase 4 for the WhatsApp scope adjustment (template messages to opted-in recipients, not public "Channel" broadcasts, which have no public API).
 
 ### 8. Automation/Orchestration
-Currently: a single GitHub Actions workflow (`news.yml`) runs `node index.js` hourly, doing collect → dedupe → AI process → save in one linear script execution. As phases progress (multi-source, multi-channel publishing), this may split into multiple workflows/jobs (e.g., separate "collect+process" job vs. "publish" job) — see Phase 9 for queue-based evolution.
+Currently: a single GitHub Actions workflow (`news.yml`) runs `node index.js` hourly, doing collect → dedupe → AI process → save → publish in one linear script execution per item. As phases progress (website integration, admin dashboard), this may split into multiple workflows/jobs (e.g., separate "collect+process" job vs. "publish" job, driven by a `status` column) — see Phase 9 for queue-based evolution.
 
 ## Design Principles
 
 1. **Single processing, multiple consumption** — news is processed by AI exactly once; website and social channels both consume the same processed record.
 2. **Idempotency** — duplicate checks and publish-status tracking ensure the same article isn't reprocessed or republished.
-3. **Fail-soft** — a failure in one item/source/channel should not halt the entire pipeline (Phase 1 principle).
+3. **Fail-soft** — a failure in one item/source/channel should not halt the entire pipeline (Phase 1 principle, extended through Phase 4's publishers).
 4. **Config over code** — sources, categories, and channel credentials should be configuration, not hardcoded values, to ease scaling (Phase 2, Phase 7).
+5. **Graceful schema drift** — new optional columns (`seo_title`, `fb_post_id`, etc.) degrade gracefully via `writeWithColumnFallback()` if their DB migration hasn't been applied yet, rather than breaking the whole pipeline (Phase 3/4).
 
 ## Current Implementation vs. Target
 
-The current `index.js` implements a simplified, linear version of the top portion of this diagram (Collector → Duplicate Check → AI Processor → Database), for a single source and a single item per run. The rest of the diagram represents the target architecture as phases in `PROJECT_ROADMAP.md` are implemented.
+`index.js` (+ `newsapi.js` + `publishers/`) now implements Collector → Duplicate Check → AI Processor → Database → Social Media Publisher (Phases 1-4), across multiple sources and up to `MAX_ITEMS_PER_RUN` items per run. Remaining: Image Pipeline (Phase 5), Website (Phase 6), Admin Dashboard (Phase 7), Monitoring (Phase 8), Scale (Phase 9) — see `PROJECT_ROADMAP.md`.

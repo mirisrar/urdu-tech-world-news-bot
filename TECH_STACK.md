@@ -10,6 +10,7 @@
 | Database | [Supabase](https://supabase.com) (Postgres + JS client `@supabase/supabase-js`) | News data storage |
 | AI / LLM | [Google Gemini API](https://ai.google.dev) — model `gemini-3.5-flash-lite` | Urdu translation, summary, categorization, post generation |
 | Image Generation | [Pollinations.ai](https://pollinations.ai) (on-the-fly image URL) | AI image prompt se image URL |
+| Social Publishing (Phase 4) | Facebook Graph API, Telegram Bot API, X (Twitter) API v2 (OAuth1.0a), WhatsApp Business Cloud API | `publishers/` module — har channel optional, skipped agar configured na ho |
 | Automation / Scheduler | GitHub Actions (`cron`, hourly) | Bot ko automatically trigger karna |
 | Source Control / CI | GitHub | Code hosting, Actions workflow |
 
@@ -17,9 +18,9 @@
 
 | Phase | Technology (proposed) | Purpose |
 |---|---|---|
-| Phase 2 | Multiple RSS feed configs (no new tech, config-driven) | Multi-source collection |
-| Phase 3 | Structured output / JSON mode (Gemini `responseMimeType: "application/json"`) | Reliable AI parsing |
-| Phase 4 | Facebook Graph API, Telegram Bot API, WhatsApp Business API, X (Twitter) API v2 | Social publishing |
+| Phase 2 | ✅ Done — multiple RSS feed configs (no new tech, config-driven) | Multi-source collection |
+| Phase 3 | ✅ Done — structured output / JSON mode (Gemini `responseMimeType: "application/json"`) | Reliable AI parsing |
+| Phase 4 | ✅ Done — Facebook Graph API, Telegram Bot API, WhatsApp Business Cloud API, X (Twitter) API v2 (manual OAuth1.0a via `node:crypto`) | Social publishing |
 | Phase 5 | Supabase Storage (or Cloudinary/S3) + image optimization lib (e.g. `sharp`) | Permanent, optimized images |
 | Phase 6 | Next.js (React) — assuming website build-out; or REST/webhook if integrating with existing Nexora News Urdu site | Website integration |
 | Phase 7 | Admin dashboard framework — Next.js + Supabase Auth, or a lightweight admin panel (e.g. Retool/custom) | Bot/RSS/settings management |

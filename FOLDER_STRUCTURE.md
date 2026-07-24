@@ -1,19 +1,26 @@
 # Folder Structure
 
-## Current Structure (as-is)
+## Current Structure (as of Phase 4)
 
 ```
 urdu-tech-world-news-bot/
 ├── .github/
 │   └── workflows/
 │       └── news.yml          # GitHub Actions cron automation
-├── index.js                  # Entire bot logic (fetch + AI + save)
+├── publishers/                # ✅ Started the modularization (Phase 4)
+│   ├── facebook.js
+│   ├── telegram.js
+│   ├── x.js
+│   ├── whatsapp.js
+│   └── index.js               # publishAll() orchestrator
+├── newsapi.js                 # NewsAPI.org client (Phase 2-adjacent)
+├── index.js                   # Collector + dedupe + AI + DB + publish orchestration
 ├── package.json
 ├── README.md
 └── (documentation files — this set)
 ```
 
-Yeh flat structure ek single-script MVP ke liye theek thi, lekin Phase 1+ ke kaam (multi-source, multi-channel, dashboard, tests) ke liye scale nahi karegi.
+`publishers/` is the first step away from the original single-file structure — each social channel is now its own testable module. `index.js` itself still contains the collector, dedupe, AI, and DB logic inline; extracting those into their own modules (as originally proposed below) remains future work, most valuable once tests are added (`TESTING_GUIDE.md`) or the file grows harder to navigate.
 
 ## Proposed Structure (Target, evolves phase-by-phase)
 
@@ -27,28 +34,29 @@ urdu-tech-world-news-bot/
 ├── src/
 │   ├── collector/
 │   │   ├── index.js              # Orchestrates fetching all configured sources
-│   │   └── sources.config.js     # (Phase 2) list of RSS feeds + category mapping
+│   │   └── sources.config.js     # (Phase 2, done — currently a SOURCES const in index.js, not yet its own file) list of RSS feeds + category mapping
 │   │
 │   ├── ai/
-│   │   ├── processor.js          # Gemini call + response handling (Phase 3)
-│   │   ├── prompts.js            # Versioned prompt templates
-│   │   └── schema.js             # Output validation schema (e.g. zod)
+│   │   ├── processor.js          # Gemini call + response handling (Phase 3, done — currently in index.js)
+│   │   ├── prompts.js            # Versioned prompt templates (Phase 3 has PROMPT_VERSION but no separate file yet)
+│   │   └── schema.js             # Output validation schema (Phase 3 uses inline responseSchema + typeof checks, no zod)
 │   │
 │   ├── image/
 │   │   └── pipeline.js           # (Phase 5) generate → download → optimize → store
 │   │
 │   ├── db/
 │   │   ├── client.js             # Supabase client init
-│   │   └── news.repository.js    # All `news` table queries centralized
+│   │   └── news.repository.js    # All `news` table queries centralized (writeWithColumnFallback exists in index.js, not yet extracted)
 │   │
-│   ├── publishers/
-│   │   ├── facebook.js           # (Phase 4)
-│   │   ├── telegram.js           # (Phase 4)
-│   │   ├── whatsapp.js           # (Phase 4)
-│   │   └── x.js                  # (Phase 4)
+│   ├── publishers/                # ✅ Done (Phase 4) — actually exists at repo root as `publishers/`, not yet moved under `src/`
+│   │   ├── facebook.js
+│   │   ├── telegram.js
+│   │   ├── whatsapp.js
+│   │   ├── x.js
+│   │   └── index.js               # publishAll() orchestrator
 │   │
 │   ├── lib/
-│   │   └── logger.js             # Structured logging helper
+│   │   └── logger.js             # Structured logging helper (minimal version exists inline in index.js)
 │   │
 │   └── run.js                    # Main entrypoint, replaces current index.js
 │

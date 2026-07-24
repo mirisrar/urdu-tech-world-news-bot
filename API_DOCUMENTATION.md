@@ -67,14 +67,42 @@ Yeh project abhi ek script hai — koi khud ka public/REST API expose nahi karta
 - **Auth**: None
 - **Limitation**: No guarantee of permanence/availability — see Phase 5 for the planned fix (download + store).
 
+### 1.5 Facebook Graph API (Phase 4 — `publishers/facebook.js`)
+
+- **Endpoint**: `https://graph.facebook.com/v21.0/{page-id}/photos` (if an image URL is available) or `/{page-id}/feed` (text + link otherwise).
+- **Method**: `POST` (form-encoded body via `URLSearchParams`)
+- **Auth**: `access_token` param (`FACEBOOK_PAGE_ACCESS_TOKEN`, a Page access token with `pages_manage_posts`)
+- **Usage**: called by `publishAll()` after a successful save, with the AI-generated `facebookPost` text and the (currently Pollinations.ai) image URL.
+- **Error handling**: Graph API's `{error: {message, code}}` shape parsed and surfaced clearly; verified live against the real API with a fake token (`Invalid OAuth access token`).
+
+### 1.6 Telegram Bot API (Phase 4 — `publishers/telegram.js`)
+
+- **Endpoint**: `https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/sendPhoto` (if image) or `/sendMessage`.
+- **Method**: `POST` (JSON body)
+- **Auth**: bot token embedded in the URL path (Telegram's convention).
+- **Usage**: bot must be added to the target channel (`TELEGRAM_CHAT_ID`) as an admin with post permission.
+- **Error handling**: Telegram's `{ok: false, description}` shape parsed; verified live against the real API with a fake token (401 Unauthorized).
+
+### 1.7 X (Twitter) API v2 (Phase 4 — `publishers/x.js`)
+
+- **Endpoint**: `https://api.twitter.com/2/tweets`
+- **Method**: `POST` (JSON body `{text}`)
+- **Auth**: **OAuth 1.0a user-context signing** (`Authorization: OAuth ...` header, HMAC-SHA1) — implemented manually via `node:crypto`, since v2 write access requires it (a plain bearer token is app-only/read-only). Requires `X_API_KEY`, `X_API_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_TOKEN_SECRET`.
+- **Usage**: composes a short post from `urduTitle` + `sourceUrl`, truncated to fit the 280-character limit.
+- **Error handling**: verified live against the real API with fake (but well-formed) OAuth1.0a keys — the signed request reached Twitter's server and received a proper `401 Unauthorized` (not a malformed-request rejection), confirming the manual signing implementation produces a structurally valid request.
+
+### 1.8 WhatsApp Business Cloud API (Phase 4 — `publishers/whatsapp.js`)
+
+- **Endpoint**: `https://graph.facebook.com/v21.0/{phone-number-id}/messages`
+- **Method**: `POST` (JSON body, `type: "template"`)
+- **Auth**: `Authorization: Bearer <WHATSAPP_ACCESS_TOKEN>` header.
+- **⚠️ Scope note**: this sends pre-approved **template messages to individual opted-in recipients** (`WHATSAPP_RECIPIENT_NUMBERS`) — it does **not** post to a "WhatsApp Channel" (the public, Telegram-channel-like broadcast feature), which has **no official public API** as of 2026. See `publishers/whatsapp.js` and `PROJECT_ROADMAP.md` Phase 4 for the full explanation of why.
+- **Error handling**: verified live against the real API with a fake token (`Invalid OAuth access token`, same Graph API error shape as Facebook, since WhatsApp Cloud API is also under `graph.facebook.com`).
+
 ## 2. Planned External APIs (Future Phases)
 
 | API | Phase | Purpose |
 |---|---|---|
-| Facebook Graph API | 4 | Publish posts + images to a Facebook Page |
-| Telegram Bot API | 4 | Send messages to a Telegram channel |
-| WhatsApp Business API | 4 | Send messages to a WhatsApp channel/broadcast list |
-| X (Twitter) API v2 | 4 | Publish tweets |
 | Supabase Storage API | 5 | Upload/store optimized images permanently |
 
 ## 3. Planned Internal API (Future — Website/Dashboard Integration)
@@ -105,9 +133,15 @@ Once Phase 6 (Website) and Phase 7 (Admin Dashboard) begin, this project will li
 | `SUPABASE_ANON_KEY` | Supabase client | Yes |
 | `GEMINI_API_KEY` | Gemini API auth | Yes |
 | `NEWS_API_KEY` | NewsAPI.org auth | No — optional source, skipped if unset |
-| `FACEBOOK_PAGE_TOKEN` (planned) | Facebook publisher | Phase 4 |
-| `TELEGRAM_BOT_TOKEN` (planned) | Telegram publisher | Phase 4 |
-| `WHATSAPP_API_TOKEN` (planned) | WhatsApp publisher | Phase 4 |
-| `X_API_KEY` / `X_API_SECRET` (planned) | X publisher | Phase 4 |
+| `FACEBOOK_PAGE_ID` | Facebook publisher | No — optional channel, skipped if unset |
+| `FACEBOOK_PAGE_ACCESS_TOKEN` | Facebook publisher | No — optional channel, skipped if unset |
+| `TELEGRAM_BOT_TOKEN` | Telegram publisher | No — optional channel, skipped if unset |
+| `TELEGRAM_CHAT_ID` | Telegram publisher | No — optional channel, skipped if unset |
+| `WHATSAPP_PHONE_NUMBER_ID` | WhatsApp publisher | No — optional channel, skipped if unset |
+| `WHATSAPP_ACCESS_TOKEN` | WhatsApp publisher | No — optional channel, skipped if unset |
+| `WHATSAPP_TEMPLATE_NAME` | WhatsApp publisher | No — optional channel, skipped if unset |
+| `WHATSAPP_RECIPIENT_NUMBERS` | WhatsApp publisher (comma-separated E.164 numbers) | No — optional channel, skipped if unset |
+| `X_API_KEY` / `X_API_SECRET` | X publisher (OAuth1.0a consumer key/secret) | No — optional channel, skipped if unset |
+| `X_ACCESS_TOKEN` / `X_ACCESS_TOKEN_SECRET` | X publisher (OAuth1.0a access token/secret) | No — optional channel, skipped if unset |
 
 See `SECURITY_GUIDELINES.md` for how these should be stored/rotated.

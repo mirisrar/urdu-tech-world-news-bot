@@ -2,14 +2,14 @@
 
 ## 1. Secrets Management
 
-- **Never hardcode** API keys/tokens in source code. Current codebase correctly uses `process.env.*` for `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `GEMINI_API_KEY` — maintain this pattern for all future secrets (Facebook, Telegram, WhatsApp, X tokens).
+- **Never hardcode** API keys/tokens in source code. Current codebase correctly uses `process.env.*` for `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `GEMINI_API_KEY`, `NEWS_API_KEY`, and all Phase 4 publisher credentials (Facebook, Telegram, X, WhatsApp) — maintain this pattern for any future secrets too.
 - Secrets live in **GitHub Actions Secrets** (production) and local `.env` (development, never committed — ensure `.gitignore` includes `.env`).
 - **Rotate keys periodically**, especially if a key was ever accidentally exposed in logs or a commit.
 - **Migration note**: this project switched its AI provider from Groq to Gemini. The old `GROQ_API_KEY` GitHub Actions secret is no longer used by `news.yml` and can be removed; a new `GEMINI_API_KEY` secret must be added before the workflow will run successfully (see `DEPLOYMENT_GUIDE.md`).
 
 ### ✅ Resolved (Phase 1)
 
-The current `index.js` previously logged `GROQ_API_KEY?.length` and dumped the full raw AI API response to console (`console.log(JSON.stringify(data, null, 2))`). While this didn't leak the key value itself, it was a bad habit that risked leaking sensitive data in logs. This has been **fixed** — debug dumps were removed and replaced with structured logging (see `PROJECT_ROADMAP.md` Phase 1 and `CODING_STANDARDS.md` §5). Keep this fixed as new secrets (Facebook, Telegram, etc.) are added in Phase 4 — never log token values or lengths.
+The current `index.js` previously logged `GROQ_API_KEY?.length` and dumped the full raw AI API response to console (`console.log(JSON.stringify(data, null, 2))`). While this didn't leak the key value itself, it was a bad habit that risked leaking sensitive data in logs. This has been **fixed** — debug dumps were removed and replaced with structured logging (see `PROJECT_ROADMAP.md` Phase 1 and `CODING_STANDARDS.md` §5). This discipline was maintained through Phase 4 — `publishAndRecord()`'s logging reports per-channel success/failure status only, never token values.
 
 ## 2. Supabase / Database Security
 
@@ -19,13 +19,16 @@ The current `index.js` previously logged `GROQ_API_KEY?.length` and dumped the f
 - Add a **unique constraint on `url`** at the DB level (defense in depth beyond application-level duplicate checks — see `DATABASE_SCHEMA.md`).
 - Never expose `SUPABASE_SERVICE_ROLE_KEY` (if adopted later) to any client-side/browser code — only server-side (Actions, API routes).
 
-## 3. Third-Party API Keys (Future — Phase 4)
+## 3. Third-Party API Keys (Phase 4 — done)
 
-As Facebook/Telegram/WhatsApp/X integrations are added:
+Facebook/Telegram/X/WhatsApp are now wired in (`publishers/`). Guidelines to follow as real tokens are added:
 
-- Use **least-privilege tokens** (e.g. Facebook Page access token scoped only to posting permissions, not full account access).
-- Store per-platform tokens as separate secrets, documented in `API_DOCUMENTATION.md` §4.
-- Be aware of token expiry (e.g. Facebook long-lived tokens still expire ~60 days) — plan for rotation/refresh, and alert (Phase 8) if a publish fails due to an expired token.
+- **Least-privilege tokens**: e.g. the Facebook Page access token only needs `pages_manage_posts`/`pages_read_engagement`, not full account access. The X keys are a dedicated Consumer Key/Secret + Access Token/Secret pair for the posting account, not a personal-use token with broader scope.
+- **Per-platform secrets, never shared**: each channel's credentials are separate env vars (`FACEBOOK_PAGE_ACCESS_TOKEN`, `TELEGRAM_BOT_TOKEN`, `X_API_KEY`/`X_API_SECRET`/`X_ACCESS_TOKEN`/`X_ACCESS_TOKEN_SECRET`, `WHATSAPP_ACCESS_TOKEN`) — documented in `API_DOCUMENTATION.md` §4.
+- **Token expiry**: Facebook long-lived Page tokens still expire (~60 days) and WhatsApp Cloud API tokens can be short- or long-lived depending on setup — plan for rotation/refresh, and add alerting (Phase 8) if a publish fails due to an expired token so it's noticed quickly rather than silently degrading.
+- **WhatsApp specifically**: `WHATSAPP_RECIPIENT_NUMBERS` contains real phone numbers — treat this as sensitive data too (not just the token), don't log full numbers in cleartext in shared logs, and ensure every recipient has actually opted in per Meta's policy (sending to non-opted-in numbers risks the WhatsApp Business account being restricted).
+- **X OAuth1.0a signing** (`publishers/x.js`) is implemented manually — the signing key is derived from `X_API_SECRET` + `X_ACCESS_TOKEN_SECRET`; never log the computed `Authorization` header (it contains the signature, though not the secrets directly, still avoid logging it as a matter of hygiene).
+- Each publisher is independently optional (skipped if unconfigured) — you do **not** need to configure all four channels; add credentials for only the platforms you actually intend to use.
 
 ## 4. AI-Generated Content Risks
 

@@ -34,6 +34,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). Versions abhi 
 - `PROMPT_VERSION` constant (now `2`) with a version-history comment.
 - Verified schema correctness against the real Gemini API (live requests with an invalid key): a correctly-typed schema only fails on the API key, while an intentionally broken schema is rejected with a schema-specific validation error — confirms structural correctness even though the full success path (real key → real structured response) wasn't live-tested.
 
+### Added (Phase 4 — Social Media Publishing Layer)
+- New `publishers/` module: `facebook.js`, `telegram.js`, `x.js`, `whatsapp.js`, and an `index.js` orchestrator (`publishAll()`). Wired into `index.js` — every successfully saved article is now automatically published to whichever channels are configured.
+- Facebook Graph API (Page feed/photos), Telegram Bot API (sendMessage/sendPhoto), X API v2 (OAuth 1.0a signed via `node:crypto`, no new dependency), WhatsApp Business Cloud API (template messages to opted-in recipients).
+- **Important scope finding**: WhatsApp Channels (the public, Telegram-channel-like broadcast feature) have no official public API as of 2026 — only unofficial, ToS-risking reverse-engineered gateways claim to support that, and this project deliberately does not use them. What's implemented instead is the officially supported alternative: private template broadcasts to opted-in numbers.
+- Generalized the Phase 3 `seo_title`-only column-fallback into `writeWithColumnFallback()`, now reused for both the insert and the new publish-status update (`fb_post_id`, `telegram_message_id`, `whatsapp_status`, `x_post_id`, `published_at`).
+- Each publisher independently optional (skipped if unconfigured) and fail-soft (a channel's failure never affects the saved article or other channels).
+- Verified request format against the real platform APIs using fake-but-well-formed credentials: Facebook/WhatsApp return real "Invalid OAuth access token" errors, Telegram returns real 401 Unauthorized, and X's manually OAuth1.0a-signed request reaches Twitter's server and gets a proper 401 (not a malformed-request rejection) — confirming the signing implementation is structurally correct. Actual publish success was not tested (no real platform credentials available).
+- **Also fixed**: `.github/workflows/news.yml` was missing the `env:` entries for `NEWS_API_KEY` and all Phase 4 publisher secrets — meaning even if those GitHub Actions secrets were added, they'd never reach `node index.js` in production. Fixed across the NewsAPI and Phase 4 branches.
+
 ### Fixed (Phase 1 — Stability & Bug Fixes)
 - Duplicate news items are now actually skipped (previously detected but the skip `return` was commented out).
 - Bot now processes up to 5 fresh RSS items per run instead of only `feed.items[0]`.

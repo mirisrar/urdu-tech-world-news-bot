@@ -103,17 +103,23 @@ Yeh project ka core/differentiating feature hai — isay apna dedicated phase mi
 
 ---
 
-## Phase 4 — Social Media Publishing Layer — 🟠 High
+## Phase 4 — Social Media Publishing Layer — 🟠 High (✅ Implemented — see PR #6)
 
 > **Scope note**: Website yahan include nahi hai — wo Phase 6 mein alag handle hoti hai, taake dono phases overlap na karein.
 
-- [ ] **Facebook Graph API** integration — generated post + image automatically Page par publish karna.
-- [ ] **Telegram** channel bot integration.
-- [ ] **WhatsApp Business API** integration (agar audience wahan hai).
-- [ ] **X/Twitter** posting (short-form version).
-- [ ] Publish status tracking DB mein (`published_at`, per-platform post ID columns) taake dobara publish na ho.
+- [x] **Facebook Graph API** integration — generated post + image automatically Page par publish karna.
+- [x] **Telegram** channel bot integration.
+- [x] **WhatsApp Business API** integration (agar audience wahan hai). *(scope-adjusted — see note below)*
+- [x] **X/Twitter** posting (short-form version).
+- [x] Publish status tracking DB mein (`published_at`, per-platform post ID columns) taake dobara publish na ho.
 
 **Done criteria**: Naya processed news item bina manual intervention sab configured social channels par live nazar aaye.
+
+**Status**: `publishers/` module implemented — ek file per channel + orchestrator (`publishAll()`), `index.js` mein wire kiya gaya hai taake har successfully-saved article automatically publish ho. Har channel independent aur optional hai (env vars set na hon to silently skip), aur fail-soft hai (ek channel fail ho to baaki aur khud article ka save unaffected rehta hai). Request format/error-handling **real platform APIs ke against verify** kiya gaya hai (fake credentials se — sab APIs correctly reachable hain aur expected auth errors return karte hain), lekin **actual successful publish kabhi live test nahi ho saka** — is environment mein kisi bhi platform ka real account/token available nahi tha.
+
+**⚠️ WhatsApp scope adjustment (important)**: Roadmap mein originally "WhatsApp channel" jaisa broadcast socha gaya tha (Telegram jaisa). Research karne par pata chala: **as of 2026, WhatsApp Channels ka koi official public API nahi hai** — sirf unofficial/ToS-violating reverse-engineered gateways yeh claim karte hain, jo account-ban risk carry karte hain. Isliye implement nahi kiya. Jo legitimately possible tha, wo implement kiya: **WhatsApp Business Cloud API** se pre-approved template messages, individual opted-in recipients ko (private broadcast, public channel post nahi). Isay use karne ke liye Meta se ek approved message template chahiye hoga.
+
+**⚠️ Action needed — DB migration for publish-status tracking**: `fb_post_id`, `telegram_message_id`, `whatsapp_status`, `x_post_id`, `published_at` columns abhi Supabase table mein nahi hain (see `DATABASE_SCHEMA.md` for the `ALTER TABLE` statements). Bot degrade gracefully karta hai (same mechanism jo `seo_title` ke liye tha, ab generalized — `writeWithColumnFallback()`), lekin publish status tab tak persist nahi hoga jab tak migration run na ho.
 
 ---
 
@@ -196,17 +202,19 @@ Har phase ko project ke overall scope ka ek weight diya gaya hai (bara/critical 
 | Phase 1 — Stability & Bug Fixes (+ Gemini migration) | 10% | ✅ Done |
 | Phase 2 — Multi-Source Collection | 10% | ✅ Done |
 | Phase 3 — AI Processing Pipeline (structured JSON, SEO title) | 15% | ✅ Done |
-| Phase 4 — Social Media Publishing Layer | 20% | ⏳ Next |
-| Phase 5 — Image Pipeline | 10% | ❌ Not started |
+| Phase 4 — Social Media Publishing Layer | 20% | ✅ Done |
+| Phase 5 — Image Pipeline | 10% | ⏳ Next |
 | Phase 6 — Website Integration | 15% | ❌ Not started |
 | Phase 7 — Admin Dashboard | 8% | ❌ Not started |
 | Phase 8 — Monitoring & Analytics | 4% | ❌ Not started |
 | Phase 9 — Scalability & Optimization | 3% | ❌ Not started |
 | **Total** | **100%** | |
 
-**Abhi tak (Phase 0 + Phase 1 + Phase 2 + Phase 3 done)**: **40% complete** (5% + 10% + 10% + 15%).
+**Abhi tak (Phase 0 + Phase 1 + Phase 2 + Phase 3 + Phase 4 done)**: **60% complete** (5% + 10% + 10% + 15% + 20%) — sabse bara single jump, kyunke publishing 4 channels cover karta hai.
 
-**Phase 4 complete hone ke baad**: **60% complete** (40% + 20%) — sabse bara single jump, kyunke publishing 4 channels cover karta hai.
+**Phase 5 complete hone ke baad**: **70% complete** (60% + 10%).
+
+**Note**: "Done" yahan **code implemented aur request-format live-verified** ka matlab hai (see Phase 4 status note above) — **real-account success path abhi tak kisi bhi phase ke external integrations (Gemini, NewsAPI, Facebook, Telegram, WhatsApp, X) mein live-verify nahi hua**, kyunke is dev environment mein in platforms ke real credentials available nahi the. Production mein real secrets add karne ke baad, ek manual `workflow_dispatch` run se in sab ko end-to-end confirm karna baaki hai.
 
 ### Yeh weights kyun aise hain?
 

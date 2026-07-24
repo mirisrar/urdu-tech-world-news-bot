@@ -26,15 +26,23 @@ Yeh current table hai jo `index.js` use kar raha hai. Neeche columns hain jo abh
 
 > **Note**: Exact column types/constraints should be confirmed directly in the Supabase dashboard/schema — this document reflects what the application code (`index.js`) reads/writes, not a verified `CREATE TABLE` statement. Recommend exporting the actual schema (via Supabase SQL editor: `\d news` or the Table Editor) and syncing it here.
 
-### ⚠️ Required Migration (Phase 3 — action needed)
+### ⚠️ Required Migration (Phase 3 + Phase 4 — action needed)
 
-`index.js` (Phase 3, PR #5) now generates a `seoTitle` field via Gemini and attempts to save it as `seo_title`. **This column likely doesn't exist on your Supabase table yet** — this change has no database credentials and cannot run migrations itself. Run this in the Supabase SQL editor:
+`index.js` now generates/tracks several fields that likely don't have matching columns on your Supabase table yet — this change has no database credentials and cannot run migrations itself. Run this in the Supabase SQL editor:
 
 ```sql
+-- Phase 3: AI-generated SEO title
 ALTER TABLE news ADD COLUMN IF NOT EXISTS seo_title text;
+
+-- Phase 4: publish-status tracking (one column per channel + a timestamp)
+ALTER TABLE news ADD COLUMN IF NOT EXISTS fb_post_id text;
+ALTER TABLE news ADD COLUMN IF NOT EXISTS telegram_message_id text;
+ALTER TABLE news ADD COLUMN IF NOT EXISTS whatsapp_status text;
+ALTER TABLE news ADD COLUMN IF NOT EXISTS x_post_id text;
+ALTER TABLE news ADD COLUMN IF NOT EXISTS published_at timestamptz;
 ```
 
-Until this is run, `saveNews()` will detect the missing column (Postgres error `42703`), log a warning, and automatically retry the insert without `seo_title` — so the bot **won't break**, but SEO titles won't be persisted until the column is added.
+Until this is run, `saveNews()`/`updatePublishStatus()` will detect each missing column (Postgres error `42703`) one at a time, log a warning, and automatically retry the write without it (via the generic `writeWithColumnFallback()` helper in `index.js`) — so the bot **won't break**, but these fields won't be persisted until the columns are added.
 
 ### Proposed Additions (per `PROJECT_ROADMAP.md`, later phases)
 
@@ -42,10 +50,6 @@ Until this is run, `saveNews()` will detect the missing column (Postgres error `
 |---|---|---|---|
 | `stored_image_url` | `text` | Phase 5 | Permanent image URL (Supabase Storage) after download/optimization |
 | `published_website_at` | `timestamptz` | Phase 6 | Timestamp when shown on website |
-| `fb_post_id` | `text` | Phase 4 | Facebook post ID after publishing (idempotency) |
-| `telegram_message_id` | `text` | Phase 4 | Telegram message ID after publishing |
-| `whatsapp_status` | `text` | Phase 4 | WhatsApp publish status |
-| `x_post_id` | `text` | Phase 4 | X/Twitter post ID after publishing |
 | `status` | `text` (enum-like: `pending`, `processed`, `published`, `failed`) | Phase 1/4 | Overall pipeline status tracking |
 | `error_log` | `text` | Phase 1/8 | Last error message, if processing/publishing failed |
 | `views` | `integer` | Phase 8 | Website view count (analytics) |
