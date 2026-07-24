@@ -21,6 +21,7 @@ Yeh document team/contributors ke liye baseline rules define karta hai — kaam 
 - Sab secrets `.env` (local) ya GitHub Actions Secrets (production) mein rakho.
 - `.env` file **kabhi git mein commit na karo** — `.gitignore` mein add rakho.
 - Naya secret add karte waqt `.env.example` update karo (bina actual value ke, sirf key name).
+- ⚠️ **Naya secret add karte waqt `.github/workflows/news.yml` (ya jo bhi workflow relevant ho) ke `env:` block mein bhi zaroor add karo.** Sirf GitHub repo Settings mein secret add karna kaafi nahi hai — jab tak workflow ka `env:` block usay explicitly list na kare, `process.env.<VAR>` production run mein hamesha `undefined` rahega. Yeh exact bug is project mein already mil chuka hai (`NEWS_API_KEY` aur Phase 4 publisher secrets — see `CHANGELOG.md`), isay dobara na hone dena.
 
 ## 4. Database Rules
 

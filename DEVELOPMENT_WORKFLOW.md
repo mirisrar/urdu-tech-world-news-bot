@@ -18,7 +18,10 @@ SUPABASE_ANON_KEY=
 GEMINI_API_KEY=
 ```
 
+Optional (see `.env.example` for the full list with comments) — `NEWS_API_KEY` and the Phase 4 publisher credentials (`FACEBOOK_*`, `TELEGRAM_*`, `X_*`, `WHATSAPP_*`). Each is independently skipped if left unset, so local development works fine without any of them.
+
 > `.env` file **kabhi commit na karo**. `.env.example` mein sirf key names rakho.
+> ⚠️ Naya secret add karo to **`.github/workflows/news.yml` ke `env:` block mein bhi add karna na bhoolo** — warna GitHub Actions secret mein add karne ke bawajood woh production run mein `process.env` mein kabhi available nahi hoga (yeh exact bug is project mein already mil chuka hai — see `CHANGELOG.md`).
 
 ## 2. Branching Strategy
 

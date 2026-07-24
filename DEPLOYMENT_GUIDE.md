@@ -13,15 +13,23 @@ Yeh project currently ek **serverless-style deployment** use kar raha hai — ko
 
 ### Setup Steps (for a new environment/fork)
 
-1. **Supabase project banao** (supabase.com) — `news` table create karo (see `DATABASE_SCHEMA.md`).
+1. **Supabase project banao** (supabase.com) — `news` table create karo (see `DATABASE_SCHEMA.md`), aur `seo_title`/publish-status columns ke migrations run karo.
 2. **Gemini API key** generate karo (aistudio.google.com → "Get API key").
-3. GitHub repo Settings → Secrets and variables → Actions mein add karo:
+3. GitHub repo Settings → Secrets and variables → Actions mein **required** secrets add karo:
    - `SUPABASE_URL`
    - `SUPABASE_ANON_KEY`
    - `GEMINI_API_KEY`
-4. Workflow already configured hai — push karne par ya schedule par automatically chalega. Manual test: Actions tab → "News Bot" → "Run workflow".
+4. (Optional) Extra sources/channels chahiye to yeh bhi add karo — har ek independently optional hai, agar na add karo to us feature ke bina bot normally kaam karta rahega:
+   - `NEWS_API_KEY` (NewsAPI.org source)
+   - `FACEBOOK_PAGE_ID`, `FACEBOOK_PAGE_ACCESS_TOKEN` (Facebook publishing)
+   - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` (Telegram publishing)
+   - `X_API_KEY`, `X_API_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_TOKEN_SECRET` (X/Twitter publishing)
+   - `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_TEMPLATE_NAME`, `WHATSAPP_RECIPIENT_NUMBERS` (WhatsApp publishing — see `AI_PIPELINE.md`/`PROJECT_ROADMAP.md` Phase 4 for the important WhatsApp Channel-vs-template-message scope note)
+5. Workflow already configured hai — push karne par ya schedule par automatically chalega. Manual test: Actions tab → "News Bot" → "Run workflow".
 
 > **Migration note**: yeh project pehle Groq use karta tha, ab Gemini par migrate ho gaya hai (see `AI_PIPELINE.md` §"Why Gemini"). Agar aapke repo mein purana `GROQ_API_KEY` secret already set hai, usay `GEMINI_API_KEY` se replace/add karo — workflow ab isay use karta hai, `GROQ_API_KEY` ab redundant hai.
+
+> **⚠️ Important**: `news.yml` ka `env:` block ab har upar wale secret ko explicitly list karta hai. Agar aap GitHub Secrets mein koi secret add karte hain lekin `news.yml` ke `env:` block mein uska naam list nahi hai, wo secret `process.env` mein production run mein kabhi available nahi hoga — yeh exact bug already ek baar is project mein mila (`NEWS_API_KEY`/Phase 4 secrets missing thay) aur fix ho gaya hai, lekin future secrets add karte waqt yeh check zaroor karo.
 
 ## 2. Scaling Considerations (as sources/frequency grow — Phase 2, 9)
 
