@@ -51,6 +51,61 @@ const AI_RETRY_DELAY_MS = 2000;
 const GEMINI_MODEL = "gemini-3.5-flash-lite";
 const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
+// Prompt version history (Phase 3 — AI_PIPELINE.md "Prompt Versioning"):
+//   v1 (Phase 0-2): free-text response with "LABEL: value" lines, parsed via
+//     regex. Fragile — any formatting drift silently produced empty fields.
+//   v2 (Phase 3, current): structured JSON output via Gemini's
+//     responseSchema (see RESPONSE_SCHEMA below) — the model is constrained
+//     to return valid, schema-conforming JSON, removing regex parsing
+//     entirely. Adds seoTitle (new field, needed for Phase 6 website).
+const PROMPT_VERSION = 2;
+
+// Describes the exact JSON shape Gemini must return (Gemini's "controlled
+// generation" / responseSchema feature). This replaces the old free-text
+// "CATEGORY: ...\nURDU_TITLE: ..." format + regex parsing — the API itself
+// now enforces the structure, so we only need to validate *content*
+// (non-empty required fields), not *shape*.
+const RESPONSE_SCHEMA = {
+  type: "OBJECT",
+  properties: {
+    category: {
+      type: "STRING",
+      description: "A short news category, e.g. Technology, World, Sports, Business, Politics"
+    },
+    urduTitle: { type: "STRING", description: "The headline translated into Urdu" },
+    urduSummary: { type: "STRING", description: "A two-sentence Urdu summary of the story" },
+    seoTitle: {
+      type: "STRING",
+      description:
+        "A concise, SEO-friendly Urdu title (distinct from urduTitle) suitable for a webpage <title> tag and search results"
+    },
+    article: { type: "STRING", description: "A detailed, roughly 300-word Urdu article" },
+    hashtags: {
+      type: "ARRAY",
+      items: { type: "STRING" },
+      description: "3-5 relevant hashtags, each starting with #, e.g. #News, #Technology"
+    },
+    facebookPost: {
+      type: "STRING",
+      description: "A complete, ready-to-publish Facebook post in Urdu"
+    },
+    imagePrompt: {
+      type: "STRING",
+      description: "A professional, descriptive prompt suitable for an AI image generator"
+    }
+  },
+  required: [
+    "category",
+    "urduTitle",
+    "urduSummary",
+    "seoTitle",
+    "article",
+    "hashtags",
+    "facebookPost",
+    "imagePrompt"
+  ]
+};
+
 function log(level, message, meta) {
   const line = `[${level.toUpperCase()}] ${message}`;
   if (meta !== undefined) {
@@ -65,38 +120,36 @@ function sleep(ms) {
 }
 
 /**
- * Extracts a labeled field from the AI's free-text response.
- * Captures everything up to the next known label (or end of string),
- * so multi-line fields like ARTICLE/FACEBOOK_POST aren't truncated to one line.
+ * Parses Gemini's JSON response text into our internal result shape.
+ * Even with a responseSchema, this is wrapped defensively — truncated
+ * output (e.g. hitting a token limit) or an empty string can still
+ * produce invalid JSON, and we never want that to throw an unhandled
+ * exception deep in the retry loop.
  */
-function extractField(text, label, allLabels) {
-  const otherLabels = allLabels.filter((l) => l !== label);
-  const lookahead = otherLabels.length
-    ? `(?:${otherLabels.join("|")}):|$`
-    : "$";
-  const pattern = new RegExp(`${label}:\\s*([\\s\\S]*?)(?=${lookahead})`, "i");
-  return text.match(pattern)?.[1]?.trim() || "";
-}
-
-const AI_LABELS = [
-  "CATEGORY",
-  "URDU_TITLE",
-  "URDU_SUMMARY",
-  "ARTICLE",
-  "HASHTAGS",
-  "FACEBOOK_POST",
-  "IMAGE_PROMPT"
-];
-
 function parseAiResponse(aiText) {
+  let parsed;
+  try {
+    parsed = JSON.parse(aiText);
+  } catch (error) {
+    throw new Error(`AI response was not valid JSON: ${error.message}`);
+  }
+
+  const hashtags = Array.isArray(parsed.hashtags)
+    ? parsed.hashtags.filter((tag) => typeof tag === "string" && tag.trim())
+    : [];
+
   return {
-    category: extractField(aiText, "CATEGORY", AI_LABELS) || "General",
-    urduTitle: extractField(aiText, "URDU_TITLE", AI_LABELS),
-    urduSummary: extractField(aiText, "URDU_SUMMARY", AI_LABELS),
-    article: extractField(aiText, "ARTICLE", AI_LABELS),
-    hashtags: extractField(aiText, "HASHTAGS", AI_LABELS),
-    facebookPost: extractField(aiText, "FACEBOOK_POST", AI_LABELS),
-    imagePrompt: extractField(aiText, "IMAGE_PROMPT", AI_LABELS)
+    category: typeof parsed.category === "string" ? parsed.category.trim() : "",
+    urduTitle: typeof parsed.urduTitle === "string" ? parsed.urduTitle.trim() : "",
+    urduSummary: typeof parsed.urduSummary === "string" ? parsed.urduSummary.trim() : "",
+    seoTitle: typeof parsed.seoTitle === "string" ? parsed.seoTitle.trim() : "",
+    article: typeof parsed.article === "string" ? parsed.article.trim() : "",
+    // Stored as a single space-separated string (see DATABASE_SCHEMA.md —
+    // the `hashtags` column is `text`, not an array type), even though we
+    // work with a clean array internally while it's easy to do so.
+    hashtags: hashtags.join(" "),
+    facebookPost: typeof parsed.facebookPost === "string" ? parsed.facebookPost.trim() : "",
+    imagePrompt: typeof parsed.imagePrompt === "string" ? parsed.imagePrompt.trim() : ""
   };
 }
 
@@ -106,21 +159,11 @@ function parseAiResponse(aiText) {
  * Missing category/hashtags/etc. are non-fatal and fall back to defaults.
  */
 function isValidAiResult(result) {
-  return Boolean(
-    result.urduTitle && result.urduSummary && result.article
-  );
+  return Boolean(result.urduTitle && result.urduSummary && result.article);
 }
 
 async function callGemini(title) {
-  const prompt = `Analyze this news headline and return EXACTLY in this format:
-
-CATEGORY: Technology
-URDU_TITLE: Urdu headline
-URDU_SUMMARY: Two sentence Urdu summary
-ARTICLE: 300 word detailed Urdu article
-HASHTAGS: #News #Technology
-FACEBOOK_POST: Complete Facebook post in Urdu
-IMAGE_PROMPT: Professional AI image prompt
+  const prompt = `You are a professional Urdu news editor. Analyze the following English news headline and produce Urdu content for a news platform, following the response schema exactly.
 
 Headline:
 ${title}`;
@@ -136,11 +179,18 @@ ${title}`;
         {
           parts: [{ text: prompt }]
         }
-      ]
-      // Note: Gemini 3.x models deprecate temperature/top_p/top_k tuning —
-      // Google recommends keeping generation defaults for these models,
-      // so no generationConfig override is sent here (unlike the previous
-      // Groq call, which used temperature: 0.7).
+      ],
+      generationConfig: {
+        // Constrains Gemini to return JSON matching RESPONSE_SCHEMA exactly
+        // (Phase 3) instead of the old free-text "LABEL: value" format that
+        // required fragile regex parsing.
+        responseMimeType: "application/json",
+        responseSchema: RESPONSE_SCHEMA
+        // Note: Gemini 3.x models deprecate temperature/top_p/top_k tuning —
+        // Google recommends keeping generation defaults for these models,
+        // so no sampling overrides are sent here (unlike the previous
+        // Groq call, which used temperature: 0.7).
+      }
     })
   });
 
@@ -212,8 +262,8 @@ async function isDuplicate(url) {
   return Boolean(data && data.length > 0);
 }
 
-async function saveNews(item, sourceName, aiResult) {
-  const { error } = await supabase.from("news").insert({
+function buildNewsRow(item, sourceName, aiResult, { includeSeoTitle }) {
+  const row = {
     title: item.title,
     source: sourceName,
     url: item.link,
@@ -227,10 +277,55 @@ async function saveNews(item, sourceName, aiResult) {
     image_url: `https://image.pollinations.ai/prompt/${encodeURIComponent(
       aiResult.imagePrompt
     )}`
-  });
+  };
 
-  if (error) {
+  if (includeSeoTitle) {
+    row.seo_title = aiResult.seoTitle;
+  }
+
+  return row;
+}
+
+// Postgres error code for "a referenced column does not exist" —
+// see https://www.postgresql.org/docs/current/errcodes-appendix.html
+const POSTGRES_UNDEFINED_COLUMN = "42703";
+
+/**
+ * Inserts a processed article. Gemini now generates a `seoTitle` (Phase 3),
+ * but the Supabase `news` table may not have a `seo_title` column yet if
+ * the migration from DATABASE_SCHEMA.md hasn't been applied — rather than
+ * fail every single insert until that migration lands, we try including
+ * it, and transparently retry without it if that specific column is
+ * missing, logging a warning so the gap gets noticed and fixed.
+ */
+async function saveNews(item, sourceName, aiResult) {
+  const { error } = await supabase
+    .from("news")
+    .insert(buildNewsRow(item, sourceName, aiResult, { includeSeoTitle: true }));
+
+  if (!error) {
+    return;
+  }
+
+  const seoTitleColumnMissing =
+    error.code === POSTGRES_UNDEFINED_COLUMN && /seo_title/i.test(error.message || "");
+
+  if (!seoTitleColumnMissing) {
     throw new Error(`Insert failed: ${error.message}`);
+  }
+
+  log(
+    "warn",
+    "'seo_title' column not found on the news table — retrying insert without it. " +
+      "Run the migration in DATABASE_SCHEMA.md to store SEO titles going forward."
+  );
+
+  const { error: retryError } = await supabase
+    .from("news")
+    .insert(buildNewsRow(item, sourceName, aiResult, { includeSeoTitle: false }));
+
+  if (retryError) {
+    throw new Error(`Insert failed (even without seo_title): ${retryError.message}`);
   }
 }
 
@@ -332,6 +427,8 @@ async function collectItems() {
 }
 
 async function run() {
+  log("info", `Starting run (AI prompt v${PROMPT_VERSION})`);
+
   const candidates = await collectItems();
 
   const activeSourceCount = SOURCES.length + (process.env.NEWS_API_KEY ? 1 : 0);
