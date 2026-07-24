@@ -37,7 +37,7 @@ Yeh ek automated news aggregation aur AI content pipeline hai jo:
 | Multi-source collection | ✅ Done (Phase 2) — Reuters excluded, see `PROJECT_ROADMAP.md` |
 | Social media publishing (Facebook/Telegram/X/WhatsApp) | ✅ Wired in (Phase 4), ⚠️ success path not live-tested (no real platform credentials in dev env) — see `PROJECT_ROADMAP.md` for the WhatsApp scope adjustment |
 | Image pipeline (download, optimize, permanent storage) | ✅ Wired in (Phase 5), ⚠️ needs a Supabase Storage bucket created — falls back gracefully to the old behavior until then |
-| Website publishing | ❌ Not yet |
+| Website integration (Nexora News Urdu reads Supabase directly) | ✅ Code delivered (Phase 6), ⚠️ needs RLS policy + `SUPABASE_SERVICE_ROLE_KEY` setup — see `DATABASE_SCHEMA.md` |
 | Admin dashboard | ❌ Not yet |
 | Monitoring/analytics | ❌ Not yet |
 

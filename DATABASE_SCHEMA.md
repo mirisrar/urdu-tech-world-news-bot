@@ -78,3 +78,30 @@ Until this is run, `saveNews()`/`updatePublishStatus()` will detect each missing
 ## Duplicate Prevention Strategy
 
 Current logic (`index.js`) queries `news` by `url` before processing. Recommended improvement (Phase 1): add a **unique constraint** on `url` at the database level as a safety net, so even if application logic fails, a duplicate insert is rejected rather than silently succeeding.
+
+## ⚠️⚠️ Required Migration (Phase 6 — critical, security-related)
+
+Phase 6 (website integration) means the website reads `news` directly from the browser using the Supabase **anon key** — which is therefore now effectively public. To keep this safe, Row Level Security must restrict the `anon` role to **read-only**:
+
+```sql
+ALTER TABLE news ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Public read access on news"
+  ON news
+  FOR SELECT
+  USING (true);
+```
+
+(Canonical copy: `website-integration/database/rls-policy.sql` in this repo.)
+
+**Do this in the following order, not the other way around**:
+
+1. First, get your `service_role` key (Supabase dashboard → Settings → API) and add it as a GitHub Actions secret named `SUPABASE_SERVICE_ROLE_KEY`. `index.js` already prefers this key over `SUPABASE_ANON_KEY` for its own writes (with a fallback + warning if it's not set — see `SECURITY_GUIDELINES.md`).
+2. **Then** run the RLS policy above. Once applied, `SUPABASE_ANON_KEY` can no longer INSERT/UPDATE into `news` — only `service_role` can (it bypasses RLS entirely). If you apply the RLS policy before adding the service role secret, the bot will start failing every write until you do.
+
+Optional, for live updates on the website (`website-integration/realtime.js`):
+
+```sql
+ALTER PUBLICATION supabase_realtime ADD TABLE news;
+```
+(or toggle it on via Supabase dashboard → Database → Replication.)

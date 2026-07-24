@@ -2,7 +2,7 @@
 
 Yeh document specifically bot ke **execution pipeline** (`index.js`) ko detail mein explain karta hai — kya current implementation hai, aur kya improvements planned hain.
 
-## Current Execution Flow (`index.js`, post Phase 1 + Phase 2 + Phase 3 + Phase 4 + Phase 5)
+## Current Execution Flow (`index.js`, post Phase 1 + Phase 2 + Phase 3 + Phase 4 + Phase 5 + Phase 6)
 
 ```
 run()
@@ -82,6 +82,11 @@ Implemented in Phase 4 (see PR `cursor/phase4-social-publishing-2a5f`):
 Implemented in Phase 5 (see PR `cursor/phase5-image-pipeline-2a5f`):
 
 11. **Image pipeline** — `imagePipeline.js` (`getArticleImageUrl()`) downloads, optimizes (`sharp`), and permanently stores (Supabase Storage) the AI-generated image, replacing the on-the-fly Pollinations.ai URL with a stable one. 4-level graceful fallback if any stage fails; never throws.
+
+Implemented in Phase 6 (see PR `cursor/website-integration-2a5f`):
+
+12. **Website integration** — `website-integration/` (copied into the separate Nexora News Urdu repo) reads `news` directly from Supabase; no bot-side push code needed.
+13. **⚠️ Security fix — write credential**: since the website now uses `SUPABASE_ANON_KEY` publicly (client-side), RLS must restrict `anon` to read-only, which means the bot itself can no longer write with that key. `index.js` now prefers `SUPABASE_SERVICE_ROLE_KEY` for its own Supabase client (bypasses RLS, server-side only), falling back to `SUPABASE_ANON_KEY` with a loud warning for anyone who hasn't migrated. See `SECURITY_GUIDELINES.md`/`DATABASE_SCHEMA.md` for the required setup order.
 
 ## Target Bot Pipeline (Post Phase 6+)
 

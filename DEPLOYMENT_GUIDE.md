@@ -20,14 +20,15 @@ Yeh project currently ek **serverless-style deployment** use kar raha hai — ko
    - `SUPABASE_URL`
    - `SUPABASE_ANON_KEY`
    - `GEMINI_API_KEY`
-5. (Optional) Extra sources/channels/storage config chahiye to yeh bhi add karo — har ek independently optional hai, agar na add karo to us feature ke bina bot normally kaam karta rahega:
+5. **(Phase 6 — website integration se pehle ya turant baad, zaroori)** `SUPABASE_SERVICE_ROLE_KEY` (Supabase dashboard → Settings → API → `service_role`) GitHub secret ke tor par add karo — bot ab isay writes ke liye prefer karta hai. **Yeh add karne ke BAAD** `website-integration/database/rls-policy.sql` run karo (order important hai — see `DATABASE_SCHEMA.md`).
+6. (Optional) Extra sources/channels/storage config chahiye to yeh bhi add karo — har ek independently optional hai, agar na add karo to us feature ke bina bot normally kaam karta rahega:
    - `NEWS_API_KEY` (NewsAPI.org source)
    - `FACEBOOK_PAGE_ID`, `FACEBOOK_PAGE_ACCESS_TOKEN` (Facebook publishing)
    - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` (Telegram publishing)
    - `X_API_KEY`, `X_API_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_TOKEN_SECRET` (X/Twitter publishing)
    - `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_TEMPLATE_NAME`, `WHATSAPP_RECIPIENT_NUMBERS` (WhatsApp publishing — see `AI_PIPELINE.md`/`PROJECT_ROADMAP.md` Phase 4 for the important WhatsApp Channel-vs-template-message scope note)
    - `SUPABASE_STORAGE_BUCKET` (agar step 2 mein default `news-images` ke ilawa koi aur naam use kiya ho), `DEFAULT_FALLBACK_IMAGE_URL` (last-resort image agar generation hi fail ho jaye)
-6. Workflow already configured hai — push karne par ya schedule par automatically chalega. Manual test: Actions tab → "News Bot" → "Run workflow".
+7. Workflow already configured hai — push karne par ya schedule par automatically chalega. Manual test: Actions tab → "News Bot" → "Run workflow".
 
 > **Migration note**: yeh project pehle Groq use karta tha, ab Gemini par migrate ho gaya hai (see `AI_PIPELINE.md` §"Why Gemini"). Agar aapke repo mein purana `GROQ_API_KEY` secret already set hai, usay `GEMINI_API_KEY` se replace/add karo — workflow ab isay use karta hai, `GROQ_API_KEY` ab redundant hai.
 
@@ -38,13 +39,16 @@ Yeh project currently ek **serverless-style deployment** use kar raha hai — ko
 - GitHub Actions free tier limits (2,000 minutes/month for private repos; unlimited for public repos, but with concurrency limits) — monitor usage agar frequency/sources badhein.
 - Agar zyada frequent runs (e.g. every 5 minutes) ya heavy processing chahiye ho, consider migrating to a dedicated worker (e.g. small VM, Railway, Render) — GitHub Actions cron minimum granularity bhi 5 minutes hai aur schedule delays ho sakti hain under load.
 
-## 3. Website Integration — Nexora News Urdu (Phase 6)
+## 3. Website Integration — Nexora News Urdu (✅ Phase 6 done)
 
-Nexora News Urdu **already exists and is already deployed** independently of this bot — no new website build/deployment needed by this project. What's needed is connecting it to this bot's data:
+Nexora News Urdu (HTML5/CSS3/Vanilla JS, Vercel-hosted, no framework) reads `news` **directly from Supabase** using the JS SDK — no deployment change needed on this bot's side, and no webhook. See `website-integration/README.md` for the copy-paste-ready code and setup steps.
 
-- **Preferred**: the website reads directly from Supabase (`SUPABASE_URL` + a public-read anon/RLS policy on the `news` table) from its own frontend/backend code — no deployment change needed on this bot's side at all.
-- **Alternative**: if the website needs a push-based trigger (e.g. a static site generator that needs to rebuild when new content appears), this bot would add a `publishers/website.js` webhook call, similar to the Phase 4 social publishers.
-- **Still needed to proceed**: the website's tech stack, where its code lives, and (if webhook-based) its trigger endpoint — see `PROJECT_ROADMAP.md` Phase 6.
+**Setup on the website's side** (Vercel deployment, separate from this bot's GitHub Actions):
+1. Copy `website-integration/*.js` and `website-integration/database/rls-policy.sql` into the Nexora News Urdu repo.
+2. Run the RLS policy in Supabase SQL editor (**after** adding `SUPABASE_SERVICE_ROLE_KEY` to this bot's GitHub secrets — see §1 step 5 above, order matters).
+3. Fill in `config.js` (copied from `config.example.js`) with the same `SUPABASE_URL` + the **anon** key (never the service_role key) this bot uses.
+4. Deploy to Vercel as usual (static site, no build step required for this integration specifically).
+5. (Optional, for live updates) Enable Realtime on the `news` table (Supabase dashboard → Database → Replication).
 
 ## 4. Future Deployment — Admin Dashboard (Phase 7)
 

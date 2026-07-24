@@ -43,6 +43,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). Versions abhi 
 - Verified request format against the real platform APIs using fake-but-well-formed credentials: Facebook/WhatsApp return real "Invalid OAuth access token" errors, Telegram returns real 401 Unauthorized, and X's manually OAuth1.0a-signed request reaches Twitter's server and gets a proper 401 (not a malformed-request rejection) — confirming the signing implementation is structurally correct. Actual publish success was not tested (no real platform credentials available).
 - **Also fixed**: `.github/workflows/news.yml` was missing the `env:` entries for `NEWS_API_KEY` and all Phase 4 publisher secrets — meaning even if those GitHub Actions secrets were added, they'd never reach `node index.js` in production. Fixed across the NewsAPI and Phase 4 branches.
 
+### Added (Phase 6 — Website Integration)
+- New `website-integration/` folder: modular, production-ready vanilla JS (ES6+, no build step) for Nexora News Urdu (HTML5/CSS3/Vanilla JS, Vercel-hosted, no framework) to read `news` directly from Supabase. No webhook needed — the website is the entire integration surface, meant to be copied into its own separate repo.
+- `newsApi.js`: `getHeroNews`, `getBreakingNews`, `getLatestNews` (paginated + category filter), `getNewsByCategory`, `getTrendingNews`, `getCategories`, `searchNews`, `getArticleById`.
+- `realtime.js`: `subscribeToNewArticles()` for live updates via Supabase Realtime, no page refresh needed.
+- `utils.js`: presentation helpers (relative time incl. Urdu locale, image fallback, excerpt, article URL).
+- `database/rls-policy.sql`: the required Row Level Security policy (public SELECT, no write) needed to safely expose the anon key client-side.
+- `examples/`: full working homepage and article page reference markup.
+- Verified every `newsApi.js` function's actual generated PostgREST query by intercepting `fetch()` calls made by the real `@supabase/supabase-js` package. Not live-tested against a real Supabase project (none was available in the dev environment).
+
+### Security (Phase 6 — critical)
+- **Bot write credential changed**: since the website now exposes `SUPABASE_ANON_KEY` publicly (client-side) and RLS must therefore restrict `anon` to read-only, the bot can no longer write with that key. `index.js` now prefers `SUPABASE_SERVICE_ROLE_KEY` (bypasses RLS, server-side only) for its own Supabase client, falling back to `SUPABASE_ANON_KEY` with a loud warning for anyone who hasn't migrated yet.
+- Wired `SUPABASE_SERVICE_ROLE_KEY` into `.github/workflows/news.yml`'s `env:` block.
+
 ### Resolved (Phase 6 scope clarification)
 - Confirmed: "Nexora News Urdu" is an **existing, already-built website**, not something to build from scratch. Phase 6 scope is now integration-only (connect the existing site to this bot's Supabase data), not a new frontend build. Still needed to implement: the website's tech stack, where its code lives, and whether a direct-Supabase-read or webhook-push integration is appropriate — see `PROJECT_ROADMAP.md` Phase 6.
 

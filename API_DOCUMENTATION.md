@@ -106,27 +106,35 @@ Yeh project abhi ek script hai — koi khud ka public/REST API expose nahi karta
 - **⚠️ Scope note**: this sends pre-approved **template messages to individual opted-in recipients** (`WHATSAPP_RECIPIENT_NUMBERS`) — it does **not** post to a "WhatsApp Channel" (the public, Telegram-channel-like broadcast feature), which has **no official public API** as of 2026. See `publishers/whatsapp.js` and `PROJECT_ROADMAP.md` Phase 4 for the full explanation of why.
 - **Error handling**: verified live against the real API with a fake token (`Invalid OAuth access token`, same Graph API error shape as Facebook, since WhatsApp Cloud API is also under `graph.facebook.com`).
 
+### 1.9 Website Read Access (Phase 6 — `website-integration/`, not called by the bot)
+
+Unlike every other integration in this document, this direction is **inbound, not outbound** — the bot doesn't call the website; the website calls Supabase directly.
+
+- **Client**: Supabase JS SDK (loaded from `esm.sh` CDN — no build step), used by Nexora News Urdu's own vanilla JS code (see `website-integration/newsApi.js` in this repo, meant to be copied into the website's repo).
+- **Auth**: `SUPABASE_ANON_KEY`, used client-side (publicly visible in the browser) — safe **only** because Row Level Security restricts the `anon` role to `SELECT` (read-only) on `news`. See `DATABASE_SCHEMA.md`/`SECURITY_GUIDELINES.md`.
+- **Queries**: `getHeroNews`, `getBreakingNews`, `getLatestNews` (paginated + category filter), `getTrendingNews`, `getCategories`, `searchNews`, `getArticleById` — see `website-integration/README.md` for full usage.
+- **Live updates**: Supabase Realtime (`postgres_changes` on INSERT), via `website-integration/realtime.js` — requires Realtime enabled on the `news` table (Supabase dashboard → Database → Replication).
+- **Verified**: every query's actual generated PostgREST REST URL was checked by intercepting `fetch()` calls made by the real `@supabase/supabase-js` package. Not live-tested against a real Supabase project (none was available in the dev environment).
+
 ## 2. Planned External APIs (Future Phases)
 
-All previously "planned" external APIs (Facebook, Telegram, X, WhatsApp, Supabase Storage) are now implemented — see §1 above. Nothing currently planned/outstanding at the external-API level; Phase 6+ needs are internal (§3 below).
+All previously "planned" external APIs (Facebook, Telegram, X, WhatsApp, Supabase Storage) are now implemented — see §1 above. Nothing currently planned/outstanding at the external-API level; Phase 7+ needs are internal (§3 below).
 
-## 3. Planned Internal API (Future — Website/Dashboard Integration)
+## 3. Planned Internal API (Future — Admin Dashboard, Phase 7)
 
-Once Phase 6 (Website) and Phase 7 (Admin Dashboard) begin, this project will likely need one of:
+The website (Phase 6, done) uses approach (a) below directly — no custom backend was needed for it. Phase 7 (Admin Dashboard) will likely need one of:
 
-- **(a) Direct Supabase client access** from the website/dashboard frontend (using Supabase's auto-generated REST/Realtime API + RLS policies) — no custom backend needed.
-- **(b) A custom lightweight API layer** (e.g. Next.js API routes) if business logic (e.g. manual publish triggers, admin actions) needs to live server-side rather than directly against the DB.
+- **(a) Direct Supabase client access** (same pattern as the website — Supabase's auto-generated REST/Realtime API + RLS policies) — no custom backend needed, but the dashboard would need its own RLS policies/role (e.g. via Supabase Auth) distinct from the public anon role, since it needs write access (edit/unpublish articles, manage sources) that the public role must not have.
+- **(b) A custom lightweight API layer** (e.g. Next.js API routes) if business logic (e.g. manual publish triggers, admin actions, audit logging) needs to live server-side rather than directly against the DB.
 
-### Proposed Endpoints (if custom API layer is built)
+### Proposed Endpoints (if a custom API layer is built for the dashboard)
 
 | Method | Path | Purpose | Phase |
 |---|---|---|---|
-| `GET` | `/api/news` | List processed news (paginated, filterable by category) | 6 |
-| `GET` | `/api/news/:id` | Get single article detail | 6 |
 | `POST` | `/api/admin/sources` | Add/update RSS source | 7 |
 | `PATCH` | `/api/admin/news/:id` | Edit/unpublish an article | 7 |
 | `GET` | `/api/admin/logs` | View bot run logs | 7, 8 |
-| `POST` | `/api/webhooks/publish` | Manually trigger publish for an article | 4, 7 |
+| `POST` | `/api/webhooks/publish` | Manually trigger publish for an article | 7 |
 
 > Exact design will be finalized when Phase 6/7 begin — this section is a planning placeholder, not a committed contract yet.
 
@@ -135,7 +143,8 @@ Once Phase 6 (Website) and Phase 7 (Admin Dashboard) begin, this project will li
 | Variable | Used By | Required |
 |---|---|---|
 | `SUPABASE_URL` | Supabase client | Yes |
-| `SUPABASE_ANON_KEY` | Supabase client | Yes |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase client (preferred for bot writes, bypasses RLS) — Phase 6 | Strongly recommended once the website's read-only RLS policy is applied; bot falls back to `SUPABASE_ANON_KEY` otherwise |
+| `SUPABASE_ANON_KEY` | Supabase client (fallback for bot; also used client-side by the website — see `website-integration/`) | Yes |
 | `GEMINI_API_KEY` | Gemini API auth | Yes |
 | `NEWS_API_KEY` | NewsAPI.org auth | No — optional source, skipped if unset |
 | `FACEBOOK_PAGE_ID` | Facebook publisher | No — optional channel, skipped if unset |

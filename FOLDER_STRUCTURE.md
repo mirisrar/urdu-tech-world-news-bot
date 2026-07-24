@@ -1,6 +1,6 @@
 # Folder Structure
 
-## Current Structure (as of Phase 5)
+## Current Structure (as of Phase 6)
 
 ```
 urdu-tech-world-news-bot/
@@ -13,6 +13,15 @@ urdu-tech-world-news-bot/
 │   ├── x.js
 │   ├── whatsapp.js
 │   └── index.js               # publishAll() orchestrator
+├── website-integration/       # Phase 6 — meant to be COPIED into the Nexora News Urdu repo, not run by this bot
+│   ├── supabaseClient.js
+│   ├── newsApi.js
+│   ├── realtime.js
+│   ├── utils.js
+│   ├── config.example.js
+│   ├── database/rls-policy.sql
+│   ├── examples/               # reference HTML pages
+│   └── README.md
 ├── newsapi.js                 # NewsAPI.org client (Phase 2-adjacent)
 ├── imagePipeline.js            # Download + optimize (sharp) + Supabase Storage upload (Phase 5)
 ├── index.js                   # Collector + dedupe + AI + image + DB + publish orchestration
@@ -21,7 +30,7 @@ urdu-tech-world-news-bot/
 └── (documentation files — this set)
 ```
 
-`publishers/` is the first step away from the original single-file structure — each social channel is now its own testable module. `index.js` itself still contains the collector, dedupe, AI, and DB logic inline; extracting those into their own modules (as originally proposed below) remains future work, most valuable once tests are added (`TESTING_GUIDE.md`) or the file grows harder to navigate.
+`publishers/` is the first step away from the original single-file structure — each social channel is now its own testable module. `website-integration/` is different from everything else in this repo: it's **not executed by this bot at all** — it's a deliverable meant to be copied into Nexora News Urdu's own separate repository. `index.js` itself still contains the collector, dedupe, AI, and DB logic inline; extracting those into their own modules (as originally proposed below) remains future work, most valuable once tests are added (`TESTING_GUIDE.md`) or the file grows harder to navigate.
 
 ## Proposed Structure (Target, evolves phase-by-phase)
 
@@ -61,8 +70,7 @@ urdu-tech-world-news-bot/
 │   │
 │   └── run.js                    # Main entrypoint, replaces current index.js
 │
-├── publishers/
-│   └── website.js                 # (Phase 6, only if a webhook/push trigger is needed — Nexora News Urdu is an existing, separately-deployed site, not built in this repo)
+├── website-integration/            # ✅ Done (Phase 6) — already exists at repo root (see current structure above); no webhook publisher needed, direct Supabase read was the chosen approach
 │
 ├── dashboard/                    # (Phase 7, if built as a separate app)
 │   └── ...
@@ -84,7 +92,7 @@ urdu-tech-world-news-bot/
 
 - This restructuring is **not required for Phase 1** (bug fixes can land in `index.js` as-is). It becomes worthwhile starting **Phase 2/3**, when multiple sources and a dedicated AI module justify separate files.
 - Migrate incrementally — extract one concern at a time (e.g. `db/news.repository.js` first, since it's the simplest, well-bounded piece), rather than a single big-bang rewrite.
-- Nexora News Urdu (the website) is an **existing, already-deployed site external to this repo** — no `website/` folder is needed here. `dashboard/` (Phase 7) is still undecided (separate repo vs. this one).
+- Nexora News Urdu (the website) is an **existing, already-deployed site external to this repo** — no `website/` folder is needed here; `website-integration/` holds code meant to be copied *into* that separate repo, not run from this one. `dashboard/` (Phase 7) is still undecided (separate repo vs. this one).
 
 ## Root-Level Documentation Files (current)
 

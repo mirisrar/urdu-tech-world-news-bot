@@ -54,7 +54,9 @@
               ▼                                 ▼
    ┌────────────────────┐            ┌───────────────────────┐
    │  Website             │            │  Social Media Publisher│
-   │  (Nexora News Urdu)  │  (Phase 6) │  FB/Telegram/X/WhatsApp │  (✅ Phase 4 done)
+   │  (Nexora News Urdu)  │ (✅ Phase 6)│  FB/Telegram/X/WhatsApp │  (✅ Phase 4 done)
+   │  reads directly, no  │  done      │                         │
+   │  bot-side push code  │            │                         │
    └──────────┬───────────┘            └───────────┬────────────┘
               │                                    │
               └────────────────┬───────────────────┘
@@ -81,8 +83,8 @@ Sends the headline to Google's Gemini API (`gemini-3.5-flash-lite`) with a promp
 ### 5. Database (Supabase)
 Single `news` table is the system's source of truth (see `DATABASE_SCHEMA.md`). All downstream consumers (website, social publishers, analytics) read from here — not from RSS/AI directly — to avoid duplicated logic.
 
-### 6. Website (planned — Phase 6)
-Nexora News Urdu — an **existing, already-built and deployed website** (external to this repo). Integration (not a new build) is needed: either the site reads processed news directly from Supabase (preferred, no changes needed on this bot's side), or this bot pushes a webhook notification on publish (if the site needs a rebuild trigger). See `PROJECT_ROADMAP.md` Phase 6 for what's still needed to proceed (site's tech stack, repo/hosting, webhook endpoint if applicable).
+### 6. Website (✅ Phase 6 done)
+Nexora News Urdu — an existing, already-built and deployed website (HTML5/CSS3/Vanilla JS, Vercel, external to this repo). Reads `news` **directly from Supabase** via the JS SDK — no bot-side code needed to push data to it. `website-integration/` in this repo provides the modular vanilla-JS code (hero/breaking/latest/trending/categories/search/article + Realtime live-updates) meant to be copied into the website's own repo. This required a security change on the bot's side too — see "Design Principles" below (service_role key).
 
 ### 7. Social Media Publisher (✅ Phase 4 done)
 `publishers/` module — one file per channel (Facebook Graph API, Telegram Bot API, X API v2 with manual OAuth1.0a, WhatsApp Business Cloud API) plus an orchestrator (`publishAll()`). Currently called **inline** right after a successful save (not as a separate job reading "unpublished" rows from the Database, which is the longer-term target once a `status` column exists — see Phase 9 notes) — each channel is independently optional and fail-soft. See `PROJECT_ROADMAP.md` Phase 4 for the WhatsApp scope adjustment (template messages to opted-in recipients, not public "Channel" broadcasts, which have no public API).
@@ -97,7 +99,8 @@ Currently: a single GitHub Actions workflow (`news.yml`) runs `node index.js` ho
 3. **Fail-soft** — a failure in one item/source/channel should not halt the entire pipeline (Phase 1 principle, extended through Phase 4's publishers).
 4. **Config over code** — sources, categories, and channel credentials should be configuration, not hardcoded values, to ease scaling (Phase 2, Phase 7).
 5. **Graceful schema drift** — new optional columns (`seo_title`, `fb_post_id`, etc.) degrade gracefully via `writeWithColumnFallback()` if their DB migration hasn't been applied yet, rather than breaking the whole pipeline (Phase 3/4).
+6. **Least-privilege credentials** (Phase 6) — the bot writes with `SUPABASE_SERVICE_ROLE_KEY` (server-side only, bypasses RLS); the public website reads with `SUPABASE_ANON_KEY` (safe to expose client-side, restricted to read-only by RLS). Two different keys/roles for two very different trust levels, even though they access the same table.
 
 ## Current Implementation vs. Target
 
-`index.js` (+ `newsapi.js` + `publishers/` + `imagePipeline.js`) now implements the full top-to-bottom pipeline — Collector → Duplicate Check → AI Processor → Image Pipeline → Database → Social Media Publisher (Phases 1-5) — across multiple sources and up to `MAX_ITEMS_PER_RUN` items per run. Remaining: Website (Phase 6), Admin Dashboard (Phase 7), Monitoring (Phase 8), Scale (Phase 9) — see `PROJECT_ROADMAP.md`.
+`index.js` (+ `newsapi.js` + `publishers/` + `imagePipeline.js`) implements the full bot-side pipeline — Collector → Duplicate Check → AI Processor → Image Pipeline → Database → Social Media Publisher (Phases 1-5) — across multiple sources and up to `MAX_ITEMS_PER_RUN` items per run. `website-integration/` (Phase 6) provides the website's read-side integration. Remaining: Admin Dashboard (Phase 7), Monitoring (Phase 8), Scale (Phase 9) — see `PROJECT_ROADMAP.md`.

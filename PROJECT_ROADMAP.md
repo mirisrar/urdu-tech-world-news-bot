@@ -140,27 +140,32 @@ Yeh project ka core/differentiating feature hai — isay apna dedicated phase mi
 
 ---
 
-## Phase 6 — Website Integration (Nexora News Urdu) — 🟠 High
+## Phase 6 — Website Integration (Nexora News Urdu) — 🟠 High (✅ Implemented — see PR #8)
 
-> **✅ Resolved**: "Nexora News Urdu" ek **existing website hai, already ban chuki hai** — naya frontend build karne ki zaroorat nahi. Scope sirf **integration** hai: existing website ko is bot ke processed data (Supabase `news` table) se connect karna. Exact approach (direct Supabase client read vs. custom API/webhook) website ke tech stack par depend karta hai — see "Integration Approach" note below.
+> **✅ Resolved**: "Nexora News Urdu" ek existing, already-built website hai — HTML5, CSS3 (Modular CSS), Vanilla JS (ES6+), Supabase backend, Vercel hosting, GitHub version control, koi framework/CMS nahi. Integration approach: **direct Supabase client read** (website khud Supabase se data leti hai, koi webhook nahi chahiye).
 
-- [ ] Processed news (Database se) website par automatically show karna.
-- [ ] Category filter, search, latest-news homepage.
-- [ ] SEO-friendly URLs har article ke liye (Phase 3 ka SEO title yahan use hoga).
-- [ ] Website aur social publishing dono same Database record se content lein (duplicate logic avoid karne ke liye).
-
-### Integration Approach (do options)
-
-1. **Direct Supabase client read (recommended agar possible ho)** — website apne frontend/backend code se seedha Supabase se `news` table read kare (`SUPABASE_URL` + anon key, RLS policy se public-read allow ki gayi ho). Is bot mein **koi extra code nahi chahiye** — sirf website side par integration hai. Sabse simple aur zero-maintenance approach agar website Node.js/Next.js/koi bhi stack hai jo HTTP requests kar sakta hai.
-2. **Webhook/API push** — is bot se har naya-processed article ke baad website ke API/webhook ko notify kiya jaye (jaisa Phase 4 ke publishers karte hain, ek naya `publishers/website.js` add kiya ja sakta hai). Zaroori agar website ka apna caching/build system hai jo push-based updates chahta ho (e.g. static site generator jo rebuild trigger kare).
-
-**Is bot (`urdu-tech-world-news-bot`) ki taraf se implementation ke liye zaroori info** (abhi tak unavailable):
-- Website ka tech stack/framework (Next.js, WordPress, PHP, static site generator, etc.)
-- Website ka code kahan hai — isi jaisa GitHub repo, ya alag hosting/CMS?
-- Kya website already Supabase se connected hai, ya fresh integration chahiye?
-- Agar webhook approach chahiye: website ka publish/rebuild trigger endpoint kya hai?
+- [x] Processed news (Database se) website par automatically show karna.
+- [x] Category filter, search, latest-news homepage.
+- [x] SEO-friendly URLs har article ke liye (Phase 3 ka SEO title yahan use hoga).
+- [x] Website aur social publishing dono same Database record se content lein (duplicate logic avoid karne ke liye).
 
 **Done criteria**: Naya processed news item automatically Nexora News Urdu website par nazar aaye, bina manual publish kiye.
+
+**Status**: `website-integration/` folder implemented (bot repo mein, website repo mein copy karne ke liye) — modular vanilla JS: `newsApi.js` (hero, breaking, latest with pagination/category filter, trending, categories, search, single article), `realtime.js` (Supabase Realtime subscription — naya article save hote hi live update, bina refresh, koi webhook nahi), `utils.js`, aur working example HTML pages. Har `newsApi.js` function ka actual generated PostgREST query real `@supabase/supabase-js` package se verify kiya gaya (mock-`fetch` intercept kar ke) — real Supabase project available na hone ki wajah se live end-to-end test nahi ho saka.
+
+**⚠️⚠️ Critical security fix (isi PR mein included)**: website ka anon key ab publicly browser mein visible hoga. Isay safe rakhne ke liye RLS ko "anon = read-only" karna zaroori hai (`website-integration/database/rls-policy.sql`) — lekin isse **bot khud anon key se likh nahi payega**. Bot ab `SUPABASE_SERVICE_ROLE_KEY` prefer karta hai apne writes ke liye (RLS bypass karta hai, sirf server-side/GitHub Actions secrets mein rakhna hai, kabhi website ko expose nahi karna). `SUPABASE_ANON_KEY` par fallback hai (warning ke sath) jab tak migrate na karo.
+
+**⚠️ Action needed (is exact order mein)**:
+1. Supabase dashboard → Settings → API se `service_role` key copy karo, GitHub Actions secret `SUPABASE_SERVICE_ROLE_KEY` ke tor par add karo.
+2. `website-integration/database/rls-policy.sql` Supabase SQL editor mein run karo (anon ko read-only kar dega).
+3. (Optional, live updates ke liye) Supabase dashboard → Database → Replication → `news` table ON karo.
+4. `website-integration/` ki files Nexora News Urdu repo mein copy karo, `config.example.js` → `config.js` bana kar apna `SUPABASE_URL`/anon key daalo.
+
+**Design decisions** (poora detail `website-integration/README.md` mein):
+- "Hero" = sabse recent article (koi manual flag nahi hai abhi — future Phase 7 admin dashboard se curation add ho sakti hai).
+- "Breaking" = last 2 hours (heuristic, kabhi empty nahi hota — fallback built-in).
+- "Trending" = abhi recency-based hai; jab Phase 8 ka `views` column add hoga, automatically switch ho jayega (bot ke apne graceful column-fallback pattern se inspired).
+- Article URLs `?id=<db-id>` use karti hain — pretty/slug URLs future enhancement hai.
 
 ---
 
@@ -221,15 +226,15 @@ Har phase ko project ke overall scope ka ek weight diya gaya hai (bara/critical 
 | Phase 3 — AI Processing Pipeline (structured JSON, SEO title) | 15% | ✅ Done |
 | Phase 4 — Social Media Publishing Layer | 20% | ✅ Done |
 | Phase 5 — Image Pipeline | 10% | ✅ Done |
-| Phase 6 — Website Integration | 15% | ⏳ Next |
-| Phase 7 — Admin Dashboard | 8% | ❌ Not started |
+| Phase 6 — Website Integration | 15% | ✅ Done |
+| Phase 7 — Admin Dashboard | 8% | ⏳ Next |
 | Phase 8 — Monitoring & Analytics | 4% | ❌ Not started |
 | Phase 9 — Scalability & Optimization | 3% | ❌ Not started |
 | **Total** | **100%** | |
 
-**Abhi tak (Phase 0 + Phase 1 + Phase 2 + Phase 3 + Phase 4 + Phase 5 done)**: **70% complete** (5% + 10% + 10% + 15% + 20% + 10%).
+**Abhi tak (Phase 0 + Phase 1 + Phase 2 + Phase 3 + Phase 4 + Phase 5 + Phase 6 done)**: **85% complete** (5% + 10% + 10% + 15% + 20% + 10% + 15%).
 
-**Phase 6 complete hone ke baad**: **85% complete** (70% + 15%) — is baad sirf dashboard, monitoring, aur scale reh jayenge, jo core product value ke bina bhi system chalne deti hain.
+**Phase 7 complete hone ke baad**: **93% complete** (85% + 8%) — is baad sirf monitoring aur scale reh jayenge, jo core product value ke bina bhi system chalne deti hain.
 
 **Note**: "Done" yahan **code implemented aur request-format live-verified** ka matlab hai (see Phase 4 status note above) — **real-account success path abhi tak kisi bhi phase ke external integrations (Gemini, NewsAPI, Facebook, Telegram, WhatsApp, X) mein live-verify nahi hua**, kyunke is dev environment mein in platforms ke real credentials available nahi the. Production mein real secrets add karne ke baad, ek manual `workflow_dispatch` run se in sab ko end-to-end confirm karna baaki hai.
 

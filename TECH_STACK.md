@@ -13,6 +13,7 @@
 | Image Processing (Phase 5) | [`sharp`](https://sharp.pixelplumbing.com) | Resize (1200x630) + re-encode (WebP, quality 80) |
 | Image Storage (Phase 5) | Supabase Storage | Permanent, publicly-accessible image hosting |
 | Social Publishing (Phase 4) | Facebook Graph API, Telegram Bot API, X (Twitter) API v2 (OAuth1.0a), WhatsApp Business Cloud API | `publishers/` module — har channel optional, skipped agar configured na ho |
+| Website Integration (Phase 6) | Nexora News Urdu (HTML5, CSS3, Vanilla JS ES6+) reading Supabase directly via `@supabase/supabase-js` (CDN, no build step) + Supabase Realtime | `website-integration/` — koi bot-side push code nahi chahiye |
 | Automation / Scheduler | GitHub Actions (`cron`, hourly) | Bot ko automatically trigger karna |
 | Source Control / CI | GitHub | Code hosting, Actions workflow |
 
@@ -24,7 +25,7 @@
 | Phase 3 | ✅ Done — structured output / JSON mode (Gemini `responseMimeType: "application/json"`) | Reliable AI parsing |
 | Phase 4 | ✅ Done — Facebook Graph API, Telegram Bot API, WhatsApp Business Cloud API, X (Twitter) API v2 (manual OAuth1.0a via `node:crypto`) | Social publishing |
 | Phase 5 | ✅ Done — Supabase Storage + `sharp` for optimization | Permanent, optimized images |
-| Phase 6 | Direct Supabase client read from the existing Nexora News Urdu site (preferred, no bot-side code needed), or a `publishers/website.js` webhook if the site needs a push-based rebuild trigger — depends on the site's tech stack (not yet known — see `PROJECT_ROADMAP.md` Phase 6) | Website integration |
+| Phase 6 | ✅ Done — direct Supabase JS SDK read from Nexora News Urdu (vanilla HTML/CSS/JS, Vercel), no webhook needed. `website-integration/` in this repo has the code to copy into the website's repo. | Website integration |
 | Phase 7 | Admin dashboard framework — Next.js + Supabase Auth, or a lightweight admin panel (e.g. Retool/custom) | Bot/RSS/settings management |
 | Phase 8 | Logging/monitoring — e.g. Sentry (errors), simple custom analytics tables in Supabase | Health & performance visibility |
 | Phase 9 | Queue system (e.g. BullMQ + Redis, or Supabase Edge Functions/queues) | Scalability |

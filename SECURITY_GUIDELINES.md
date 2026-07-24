@@ -11,13 +11,14 @@
 
 The current `index.js` previously logged `GROQ_API_KEY?.length` and dumped the full raw AI API response to console (`console.log(JSON.stringify(data, null, 2))`). While this didn't leak the key value itself, it was a bad habit that risked leaking sensitive data in logs. This has been **fixed** — debug dumps were removed and replaced with structured logging (see `PROJECT_ROADMAP.md` Phase 1 and `CODING_STANDARDS.md` §5). This discipline was maintained through Phase 4 — `publishAndRecord()`'s logging reports per-channel success/failure status only, never token values.
 
-## 2. Supabase / Database Security
+## 2. Supabase / Database Security (Phase 6 — now critical, not just theoretical)
 
-- Currently using `SUPABASE_ANON_KEY` (anon/public key), which relies entirely on **Row Level Security (RLS) policies** to restrict access. Confirm RLS is enabled on the `news` table with appropriate policies:
-  - Public **read** access may be fine (e.g. if the website will read directly via anon key).
-  - **Write/insert** access should be restricted — ideally the bot uses a more privileged key (e.g. `service_role`, kept server-side/in Actions secrets only, never exposed to any frontend) rather than the anon key, once a website/dashboard is added.
+**This is no longer a "someday" concern — it's active as of Phase 6.** The website (Nexora News Urdu) reads `news` directly from the browser using the Supabase JS SDK + `SUPABASE_ANON_KEY`, which makes that key **effectively public** (visible to any visitor via browser dev tools/network tab).
+
+- **Row Level Security MUST restrict the `anon` role to read-only** on `news` — see `website-integration/database/rls-policy.sql` / `DATABASE_SCHEMA.md` for the exact policy. Without this, anyone could use the (now-public) anon key to insert/update/delete rows from their browser console.
+- **The bot itself must use `SUPABASE_SERVICE_ROLE_KEY`** (bypasses RLS entirely) for its own writes, not the anon key — `index.js` already prefers this key (with an anon-key fallback + warning for anyone who hasn't migrated). `SUPABASE_SERVICE_ROLE_KEY` must **only** ever live in server-side secrets (GitHub Actions) — **never** in the website's code, `config.js`, or any client-side/browser context.
+- **Setup order matters**: add `SUPABASE_SERVICE_ROLE_KEY` as a GitHub Actions secret *before* applying the read-only RLS policy — otherwise the bot's writes will start failing (using the now-restricted anon key) before it has the replacement credential.
 - Add a **unique constraint on `url`** at the DB level (defense in depth beyond application-level duplicate checks — see `DATABASE_SCHEMA.md`).
-- Never expose `SUPABASE_SERVICE_ROLE_KEY` (if adopted later) to any client-side/browser code — only server-side (Actions, API routes).
 - **Storage bucket (Phase 5)**: the `news-images` (or configured `SUPABASE_STORAGE_BUCKET`) bucket must be **public for reads** (so image URLs work in Facebook/Telegram/website previews) but should have a scoped **insert/upload policy** — only the bot's key needs upload permission, not arbitrary public writes. Review the bucket's storage policies in the Supabase dashboard; don't leave it open to public writes just because reads need to be public.
 
 ## 3. Third-Party API Keys (Phase 4 — done)
