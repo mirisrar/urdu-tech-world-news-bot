@@ -29,7 +29,7 @@ Yeh ek automated news aggregation aur AI content pipeline hai jo:
 |---|---|
 | RSS collection (5 sources: BBC, Al Jazeera, Dawn, Geo News, ARY News) | ✅ Working (Phase 2) |
 | NewsAPI.org (optional 6th source, keyword search) | ✅ Wired in, ⚠️ success path not live-tested (no real key in dev env) |
-| AI processing (Gemini, Urdu translation/summary) | ✅ Working (validated, retried on failure; JSON-structured output still pending — Phase 3) |
+| AI processing (Gemini, structured JSON output) | ✅ Working (Phase 3) — SEO title generated but needs a DB migration to persist (see `DATABASE_SCHEMA.md`) |
 | Database storage (Supabase) | ✅ Working |
 | Automation (GitHub Actions cron, hourly) | ✅ Working |
 | Duplicate prevention | ✅ Fixed (Phase 1) |

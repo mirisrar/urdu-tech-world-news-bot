@@ -25,34 +25,43 @@ npm install --save-dev vitest
 
 #### a) AI Response Parsing (Pure Function — Easiest to Test)
 
-Extract regex-parsing logic (currently inline in `run()`) into a standalone function, e.g. `parseAiResponse(aiText)`, then test:
+`parseAiResponse(aiText)` (currently inline in `index.js`) is `JSON.parse`-based as of Phase 3 (previously regex-based) — extract it into a standalone module and test it:
 
 ```javascript
 import { describe, it, expect } from "vitest";
 import { parseAiResponse } from "../src/ai/processor.js";
 
 describe("parseAiResponse", () => {
-  it("extracts all fields from a well-formatted response", () => {
-    const sample = `CATEGORY: Technology
-URDU_TITLE: ٹیسٹ ہیڈلائن
-URDU_SUMMARY: یہ ایک ٹیسٹ خلاصہ ہے۔
-ARTICLE: Full article text here...
-FACEBOOK_POST: Full facebook post text here...
-HASHTAGS: #News #Technology
-IMAGE_PROMPT: A professional tech illustration`;
+  it("extracts all fields from a well-formatted JSON response", () => {
+    const sample = JSON.stringify({
+      category: "Technology",
+      urduTitle: "ٹیسٹ ہیڈلائن",
+      urduSummary: "یہ ایک ٹیسٹ خلاصہ ہے۔",
+      seoTitle: "ٹیسٹ SEO ٹائٹل",
+      article: "Full article text here...",
+      hashtags: ["#News", "#Technology"],
+      facebookPost: "Full facebook post text here...",
+      imagePrompt: "A professional tech illustration"
+    });
 
     const result = parseAiResponse(sample);
     expect(result.category).toBe("Technology");
     expect(result.urduTitle).toBe("ٹیسٹ ہیڈلائن");
+    expect(result.hashtags).toBe("#News #Technology"); // joined into a single string for the DB
   });
 
   it("defaults gracefully when a field is missing", () => {
-    const result = parseAiResponse("CATEGORY: Technology");
+    const result = parseAiResponse(JSON.stringify({ category: "Technology" }));
     expect(result.urduTitle).toBe("");
   });
 
-  it("flags/throws when response is completely malformed", () => {
-    // once schema validation (Phase 3) is added, assert it rejects garbage input
+  it("throws on malformed/truncated JSON", () => {
+    expect(() => parseAiResponse('{"category": "Tech", "urduTitle": "incomplete...')).toThrow();
+  });
+
+  it("falls back to an empty string for a non-array hashtags value", () => {
+    const result = parseAiResponse(JSON.stringify({ urduTitle: "T", urduSummary: "S", article: "A", hashtags: "not-an-array" }));
+    expect(result.hashtags).toBe("");
   });
 });
 ```

@@ -26,11 +26,20 @@ Yeh current table hai jo `index.js` use kar raha hai. Neeche columns hain jo abh
 
 > **Note**: Exact column types/constraints should be confirmed directly in the Supabase dashboard/schema — this document reflects what the application code (`index.js`) reads/writes, not a verified `CREATE TABLE` statement. Recommend exporting the actual schema (via Supabase SQL editor: `\d news` or the Table Editor) and syncing it here.
 
-### Proposed Additions (per `PROJECT_ROADMAP.md`)
+### ⚠️ Required Migration (Phase 3 — action needed)
+
+`index.js` (Phase 3, PR #5) now generates a `seoTitle` field via Gemini and attempts to save it as `seo_title`. **This column likely doesn't exist on your Supabase table yet** — this change has no database credentials and cannot run migrations itself. Run this in the Supabase SQL editor:
+
+```sql
+ALTER TABLE news ADD COLUMN IF NOT EXISTS seo_title text;
+```
+
+Until this is run, `saveNews()` will detect the missing column (Postgres error `42703`), log a warning, and automatically retry the insert without `seo_title` — so the bot **won't break**, but SEO titles won't be persisted until the column is added.
+
+### Proposed Additions (per `PROJECT_ROADMAP.md`, later phases)
 
 | Column | Type | Phase | Purpose |
 |---|---|---|---|
-| `seo_title` | `text` | Phase 3 | SEO-friendly title for website |
 | `stored_image_url` | `text` | Phase 5 | Permanent image URL (Supabase Storage) after download/optimization |
 | `published_website_at` | `timestamptz` | Phase 6 | Timestamp when shown on website |
 | `fb_post_id` | `text` | Phase 4 | Facebook post ID after publishing (idempotency) |

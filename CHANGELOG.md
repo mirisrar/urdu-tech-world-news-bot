@@ -28,6 +28,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). Versions abhi 
 - `index.js`: NewsAPI wired in as a 6th, optional collector source (`collectNewsApiItems()`), skipped automatically (info log, not an error) if `NEWS_API_KEY` isn't set.
 - Tested: missing key, invalid query, invalid key against the real NewsAPI (live), simulated network failure, and mocked success-path mapping all verified. **Not tested**: success path against real NewsAPI data — no real `NEWS_API_KEY` was available in the development environment.
 
+### Added (Phase 3 — AI Processing Pipeline)
+- Gemini's native structured output (`responseMimeType: "application/json"` + `responseSchema`) replaces the old free-text `LABEL: value` prompt/regex-parsing pipeline entirely.
+- New `seoTitle` field, generated alongside the existing fields — needed for Phase 6 (website). **Requires a DB migration** (`ALTER TABLE news ADD COLUMN IF NOT EXISTS seo_title text;`, see `DATABASE_SCHEMA.md`); `saveNews()` degrades gracefully (retries without `seo_title`, logs a warning) if the column isn't present yet.
+- `PROMPT_VERSION` constant (now `2`) with a version-history comment.
+- Verified schema correctness against the real Gemini API (live requests with an invalid key): a correctly-typed schema only fails on the API key, while an intentionally broken schema is rejected with a schema-specific validation error — confirms structural correctness even though the full success path (real key → real structured response) wasn't live-tested.
+
 ### Fixed (Phase 1 — Stability & Bug Fixes)
 - Duplicate news items are now actually skipped (previously detected but the skip `return` was commented out).
 - Bot now processes up to 5 fresh RSS items per run instead of only `feed.items[0]`.

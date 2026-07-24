@@ -71,7 +71,7 @@ Fetches RSS feeds from configured sources — a `SOURCES` array in `index.js` (B
 Queries Supabase `news` table by `url` before processing, to avoid reprocessing/re-publishing the same article. Currently has a bug (check exists but skip action is disabled) — fixed in Phase 1.
 
 ### 3. AI Processor
-Sends the headline to Google's Gemini API (`gemini-3.5-flash-lite`) with a structured prompt, requesting category, Urdu title/summary/article, hashtags, Facebook post text, and an image prompt. Parses the free-text response via regex today; Phase 3 moves this to strict structured (JSON) output for reliability (Gemini has native JSON-mode support for this). See `AI_PIPELINE.md` for why Gemini was chosen over Groq (which this project used until this migration).
+Sends the headline to Google's Gemini API (`gemini-3.5-flash-lite`) with a prompt and a `responseSchema` (Phase 3), requesting category, Urdu title/summary/article, an SEO title, hashtags, Facebook post text, and an image prompt as strict structured JSON — Gemini's own API enforces the shape, so the bot just does `JSON.parse` (no more regex). See `AI_PIPELINE.md` for why Gemini was chosen over Groq (which this project used until this migration) and how schema correctness was verified.
 
 ### 4. Image Pipeline (planned — Phase 5)
 Currently constructs an on-the-fly `pollinations.ai` URL from the AI's image prompt (not downloaded/stored). Phase 5 adds downloading, optimizing, and storing images permanently (Supabase Storage or similar).

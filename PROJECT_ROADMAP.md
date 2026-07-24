@@ -83,19 +83,23 @@ Pehle jo bana hai usay reliable banao, tabhi upar naya kaam karna faida dega.
 
 ---
 
-## Phase 3 — AI Processing Pipeline — 🔴 Critical
+## Phase 3 — AI Processing Pipeline — 🔴 Critical (✅ Implemented — see PR #5)
 
 Yeh project ka core/differentiating feature hai — isay apna dedicated phase milna chahiye.
 
-- [ ] Urdu translation + summary (already implemented — refine karo).
-- [ ] Category classification (already implemented — accuracy improve karo).
-- [ ] Hashtag generation.
-- [ ] **SEO-friendly title** generate karna (naya — website ke liye zaroori).
-- [ ] Image prompt generation (already implemented).
-- [ ] AI output ko strict JSON schema mein return karwana (regex parsing ki jagah — reliability ke liye).
-- [ ] Prompt versioning/testing — taake future mein prompt improve karna easy ho.
+- [x] Urdu translation + summary (already implemented — refine karo).
+- [x] Category classification (already implemented — accuracy improve karo).
+- [x] Hashtag generation.
+- [x] **SEO-friendly title** generate karna (naya — website ke liye zaroori). *(generated; DB storage needs a migration — see below)*
+- [x] Image prompt generation (already implemented).
+- [x] AI output ko strict JSON schema mein return karwana (regex parsing ki jagah — reliability ke liye).
+- [x] Prompt versioning/testing — taake future mein prompt improve karna easy ho.
 
 **Done criteria**: Har news item ke liye consistent, structured, validated AI output milay jo Database, Website, aur Social sab consume kar sakein.
+
+**Status**: Implemented — Gemini's native structured output (`responseMimeType: "application/json"` + `responseSchema`) replaced the old free-text/regex pipeline entirely. Schema correctness verified against the real Gemini API (live requests with an invalid key: correctly-typed schema → only an auth error; intentionally broken schema → a schema-specific validation error). `PROMPT_VERSION` constant added for versioning. Full success-path content (real structured response, real Urdu translation quality) **not yet live-verified** — no real `GEMINI_API_KEY` was available in the dev environment.
+
+**⚠️ Action needed — `seo_title` DB migration**: run `ALTER TABLE news ADD COLUMN IF NOT EXISTS seo_title text;` in Supabase (see `DATABASE_SCHEMA.md`). Until then, the bot degrades gracefully (retries the insert without `seo_title`, logs a warning) rather than breaking, but SEO titles won't be persisted.
 
 ---
 
@@ -191,8 +195,8 @@ Har phase ko project ke overall scope ka ek weight diya gaya hai (bara/critical 
 | Phase 0 — Foundation (MVP pipeline) | 5% | ✅ Done |
 | Phase 1 — Stability & Bug Fixes (+ Gemini migration) | 10% | ✅ Done |
 | Phase 2 — Multi-Source Collection | 10% | ✅ Done |
-| Phase 3 — AI Processing Pipeline (structured JSON, SEO title) | 15% | ⏳ Next |
-| Phase 4 — Social Media Publishing Layer | 20% | ❌ Not started |
+| Phase 3 — AI Processing Pipeline (structured JSON, SEO title) | 15% | ✅ Done |
+| Phase 4 — Social Media Publishing Layer | 20% | ⏳ Next |
 | Phase 5 — Image Pipeline | 10% | ❌ Not started |
 | Phase 6 — Website Integration | 15% | ❌ Not started |
 | Phase 7 — Admin Dashboard | 8% | ❌ Not started |
@@ -200,9 +204,9 @@ Har phase ko project ke overall scope ka ek weight diya gaya hai (bara/critical 
 | Phase 9 — Scalability & Optimization | 3% | ❌ Not started |
 | **Total** | **100%** | |
 
-**Abhi tak (Phase 0 + Phase 1 + Phase 2 done)**: **25% complete** (5% + 10% + 10%).
+**Abhi tak (Phase 0 + Phase 1 + Phase 2 + Phase 3 done)**: **40% complete** (5% + 10% + 10% + 15%).
 
-**Phase 3 complete hone ke baad**: **40% complete** (25% + 15%).
+**Phase 4 complete hone ke baad**: **60% complete** (40% + 20%) — sabse bara single jump, kyunke publishing 4 channels cover karta hai.
 
 ### Yeh weights kyun aise hain?
 

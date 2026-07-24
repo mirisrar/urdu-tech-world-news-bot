@@ -32,7 +32,7 @@ const result = await fetchSomething();
 
 ## 4. Error Handling
 
-- Kabhi errors ko silently swallow mat karo (e.g. regex match fail ho kar empty string default ho jana bina warning ke — current known issue, Phase 1/3 mein fix hoga).
+- Kabhi errors ko silently swallow mat karo (e.g. pehle regex match fail ho kar empty string default ho jati thi bina warning ke — Phase 1 mein validation add hui, Phase 3 mein regex hi hata di gayi structured JSON output ke sath).
 - Errors ko structured log karo: `{ context, error, itemId/url }` — plain `console.log(error)` (jaisa abhi hai) insufficient hai debugging ke liye.
 - Distinguish **recoverable** (skip this item, continue) vs **fatal** (stop the run) errors explicitly.
 

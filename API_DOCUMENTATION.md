@@ -33,20 +33,24 @@ Yeh project abhi ek script hai — koi khud ka public/REST API expose nahi karta
 - **Method**: `POST`
 - **Auth**: `x-goog-api-key: <GEMINI_API_KEY>` header
 - **Model**: `gemini-3.5-flash-lite` (see `AI_PIPELINE.md` §"Why Gemini" for why this model/provider was chosen — this project previously used Gemini, moved to Groq, and has now moved back to Gemini)
-- **Request body** (current):
+- **Request body** (current, Phase 3 — structured output):
 
 ```json
 {
   "contents": [
     { "parts": [{ "text": "<prompt with headline>" }] }
-  ]
+  ],
+  "generationConfig": {
+    "responseMimeType": "application/json",
+    "responseSchema": { "...": "see RESPONSE_SCHEMA in index.js" }
+  }
 }
 ```
 
-  No `generationConfig`/`temperature` override is sent — Google recommends keeping default sampling parameters for Gemini 3.x models.
+  No `temperature`/`top_p`/`top_k` override is sent — Google recommends keeping default sampling parameters for Gemini 3.x models. `responseSchema` (Phase 3) constrains Gemini to return JSON matching an explicit shape (`category`, `urduTitle`, `urduSummary`, `seoTitle`, `article`, `hashtags[]`, `facebookPost`, `imagePrompt`).
 
-- **Response**: content extracted via `data.candidates[0].content.parts[0].text`. If the request was safety-filtered, `data.promptFeedback.blockReason` is set instead of a candidate — the bot treats this as an error (see `index.js`).
-- **Output format (current, free-text, regex-parsed)** — see `AI_PIPELINE.md` for full prompt/schema and the planned move to structured JSON output (Gemini supports a native `responseMimeType: "application/json"` mode for this — not yet used).
+- **Response**: content extracted via `data.candidates[0].content.parts[0].text` — now a JSON string (parsed with `JSON.parse`) rather than free-text. If the request was safety-filtered, `data.promptFeedback.blockReason` is set instead of a candidate — the bot treats this as an error (see `index.js`).
+- **Output format**: structured JSON (Phase 3, see `AI_PIPELINE.md` for the full schema and how it was verified against the real API without a valid key). The old free-text/regex-parsed format has been fully replaced.
 
 ### 1.3 Supabase (Postgres REST via `@supabase/supabase-js`)
 
