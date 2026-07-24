@@ -23,3 +23,5 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # Optional — NewsAPI.org source is skipped automatically if this secret isn't set.
+          NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
