@@ -6,10 +6,29 @@ import { getArticleImageUrl } from "./imagePipeline.js";
 
 const parser = new Parser();
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_ANON_KEY
-);
+// Phase 6: the website (Nexora News Urdu) now reads the `news` table
+// directly from the browser using the Supabase JS SDK + SUPABASE_ANON_KEY.
+// That means the anon key is effectively public, and Row Level Security
+// must restrict the "anon" role to SELECT-only (see DATABASE_SCHEMA.md for
+// the required RLS policy). Once that's in place, the bot can no longer
+// write with the anon key — it needs SUPABASE_SERVICE_ROLE_KEY, which
+// bypasses RLS entirely and must stay server-side only (GitHub Actions
+// secrets), never exposed to the website/browser.
+//
+// SUPABASE_ANON_KEY is kept as a fallback for anyone who hasn't migrated
+// yet, but this will stop working the moment the recommended read-only RLS
+// policy is applied — see SECURITY_GUIDELINES.md and DATABASE_SCHEMA.md.
+const supabaseWriteKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+
+if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  console.log(
+    "[WARN] SUPABASE_SERVICE_ROLE_KEY is not set - falling back to SUPABASE_ANON_KEY for bot writes. " +
+      "This will break once the website's read-only RLS policy is applied (see DATABASE_SCHEMA.md). " +
+      "Add SUPABASE_SERVICE_ROLE_KEY (Supabase dashboard -> Settings -> API) as soon as possible."
+  );
+}
+
+const supabase = createClient(process.env.SUPABASE_URL, supabaseWriteKey);
 
 // Config-driven list of RSS sources (Phase 2). Each is fetched independently;
 // a failure fetching one source does not stop the others (fail-soft).
