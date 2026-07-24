@@ -1,6 +1,7 @@
 import Parser from "rss-parser";
 import { createClient } from "@supabase/supabase-js";
 import { fetchNewsFromNewsApi } from "./newsapi.js";
+import { publishAll } from "./publishers/index.js";
 
 const parser = new Parser();
 
@@ -262,28 +263,25 @@ async function isDuplicate(url) {
   return Boolean(data && data.length > 0);
 }
 
-function buildNewsRow(item, sourceName, aiResult, { includeSeoTitle }) {
-  const row = {
+function buildImageUrl(imagePrompt) {
+  return `https://image.pollinations.ai/prompt/${encodeURIComponent(imagePrompt)}`;
+}
+
+function buildNewsRow(item, sourceName, aiResult) {
+  return {
     title: item.title,
     source: sourceName,
     url: item.link,
     category: aiResult.category,
     urdu_title: aiResult.urduTitle,
     urdu_summary: aiResult.urduSummary,
+    seo_title: aiResult.seoTitle,
     article: aiResult.article,
     hashtags: aiResult.hashtags,
     facebook_post: aiResult.facebookPost,
     image_prompt: aiResult.imagePrompt,
-    image_url: `https://image.pollinations.ai/prompt/${encodeURIComponent(
-      aiResult.imagePrompt
-    )}`
+    image_url: buildImageUrl(aiResult.imagePrompt)
   };
-
-  if (includeSeoTitle) {
-    row.seo_title = aiResult.seoTitle;
-  }
-
-  return row;
 }
 
 // Postgres error code for "a referenced column does not exist" —
@@ -291,41 +289,125 @@ function buildNewsRow(item, sourceName, aiResult, { includeSeoTitle }) {
 const POSTGRES_UNDEFINED_COLUMN = "42703";
 
 /**
- * Inserts a processed article. Gemini now generates a `seoTitle` (Phase 3),
- * but the Supabase `news` table may not have a `seo_title` column yet if
- * the migration from DATABASE_SCHEMA.md hasn't been applied — rather than
- * fail every single insert until that migration lands, we try including
- * it, and transparently retry without it if that specific column is
- * missing, logging a warning so the gap gets noticed and fixed.
+ * Runs a Supabase write (insert/update) and, if Postgres reports a
+ * specific column as undefined (42703), strips that field from the row
+ * and retries — repeating until the write succeeds or there's nothing
+ * left to strip. This lets genuinely new/optional columns (seo_title,
+ * fb_post_id, telegram_message_id, whatsapp_status, x_post_id,
+ * published_at — see DATABASE_SCHEMA.md) degrade gracefully instead of
+ * breaking every write until their migration is actually applied to the
+ * real Supabase table, which this bot has no credentials to do itself.
+ */
+async function writeWithColumnFallback(row, performWrite, { maxAttempts = 8 } = {}) {
+  let currentRow = { ...row };
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    if (Object.keys(currentRow).length === 0) {
+      throw new Error("Write failed: all optional columns were missing from the table");
+    }
+
+    const { data, error } = await performWrite(currentRow);
+
+    if (!error) {
+      return data;
+    }
+
+    const missingColumn =
+      error.code === POSTGRES_UNDEFINED_COLUMN
+        ? error.message?.match(/column "(\w+)"/i)?.[1]
+        : undefined;
+
+    if (!missingColumn || !(missingColumn in currentRow)) {
+      throw new Error(`Write failed: ${error.message}`);
+    }
+
+    log(
+      "warn",
+      `'${missingColumn}' column not found on the news table — retrying without it. ` +
+        "Run the missing migration in DATABASE_SCHEMA.md to store this field going forward."
+    );
+    const { [missingColumn]: _omit, ...rest } = currentRow;
+    currentRow = rest;
+  }
+
+  throw new Error("Write failed: too many missing columns (exceeded retry attempts)");
+}
+
+/**
+ * Inserts a processed article and returns its new row id (used afterward
+ * to record publish status — see updatePublishStatus).
  */
 async function saveNews(item, sourceName, aiResult) {
-  const { error } = await supabase
-    .from("news")
-    .insert(buildNewsRow(item, sourceName, aiResult, { includeSeoTitle: true }));
+  const row = buildNewsRow(item, sourceName, aiResult);
+  const data = await writeWithColumnFallback(row, (currentRow) =>
+    supabase.from("news").insert(currentRow).select("id").single()
+  );
+  return data.id;
+}
 
-  if (!error) {
+/**
+ * Records the outcome of publishAll() against the saved row, using the
+ * same graceful column-fallback as saveNews (these tracking columns are
+ * proposed additions per DATABASE_SCHEMA.md and may not exist yet).
+ * Never throws — a failure here just means publish status isn't tracked
+ * this time; it never affects the already-saved article.
+ */
+async function updatePublishStatus(newsId, publishResults) {
+  const updateRow = {};
+  if (publishResults.facebook?.published) updateRow.fb_post_id = publishResults.facebook.id;
+  if (publishResults.telegram?.published) updateRow.telegram_message_id = publishResults.telegram.id;
+  if (publishResults.whatsapp?.published) updateRow.whatsapp_status = "sent";
+  if (publishResults.x?.published) updateRow.x_post_id = publishResults.x.id;
+
+  if (Object.keys(updateRow).length === 0) {
     return;
   }
+  updateRow.published_at = new Date().toISOString();
 
-  const seoTitleColumnMissing =
-    error.code === POSTGRES_UNDEFINED_COLUMN && /seo_title/i.test(error.message || "");
-
-  if (!seoTitleColumnMissing) {
-    throw new Error(`Insert failed: ${error.message}`);
+  try {
+    await writeWithColumnFallback(updateRow, (currentRow) =>
+      supabase.from("news").update(currentRow).eq("id", newsId).select("id").single()
+    );
+  } catch (error) {
+    log("warn", "Failed to record publish status (article itself was saved fine)", {
+      newsId,
+      message: error.message
+    });
   }
+}
 
-  log(
-    "warn",
-    "'seo_title' column not found on the news table — retrying insert without it. " +
-      "Run the migration in DATABASE_SCHEMA.md to store SEO titles going forward."
-  );
+/**
+ * Publishes the just-saved article to every configured social channel
+ * (Phase 4) and records the outcome. Wrapped so that any failure here —
+ * a channel erroring, or the status update failing — is logged but never
+ * propagates: the article is already saved successfully by this point,
+ * and a publishing hiccup shouldn't be treated the same as a processing
+ * failure (it doesn't count against `failed` in the run summary).
+ */
+async function publishAndRecord(newsId, item, sourceName, aiResult) {
+  try {
+    const results = await publishAll({
+      urduTitle: aiResult.urduTitle,
+      urduSummary: aiResult.urduSummary,
+      facebookPost: aiResult.facebookPost,
+      hashtags: aiResult.hashtags,
+      imageUrl: buildImageUrl(aiResult.imagePrompt),
+      sourceUrl: item.link
+    });
 
-  const { error: retryError } = await supabase
-    .from("news")
-    .insert(buildNewsRow(item, sourceName, aiResult, { includeSeoTitle: false }));
+    const summary = Object.entries(results)
+      .filter(([, result]) => !result.skipped)
+      .map(([channel, result]) => `${channel}=${result.published ? "ok" : `failed(${result.error})`}`);
 
-  if (retryError) {
-    throw new Error(`Insert failed (even without seo_title): ${retryError.message}`);
+    if (summary.length > 0) {
+      log("info", "Publish results", { source: sourceName, summary: summary.join(", ") });
+      await updatePublishStatus(newsId, results);
+    }
+  } catch (error) {
+    log("warn", "Publishing step failed (article was still saved)", {
+      newsId,
+      message: error.message
+    });
   }
 }
 
@@ -346,8 +428,11 @@ async function processItem(item, sourceName) {
   }
 
   const aiResult = await analyzeNews(item.title);
-  await saveNews(item, sourceName, aiResult);
+  const newsId = await saveNews(item, sourceName, aiResult);
   log("info", "News saved with full AI analysis", { title: item.title, source: sourceName });
+
+  await publishAndRecord(newsId, item, sourceName, aiResult);
+
   return "processed";
 }
 
