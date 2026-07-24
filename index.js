@@ -15,9 +15,16 @@ const SOURCE_NAME = "BBC";
 // How many fresh (non-duplicate) items to process per run.
 const MAX_ITEMS_PER_RUN = 5;
 
-// Retry settings for the Groq API call.
+// Retry settings for the Gemini API call.
 const AI_MAX_RETRIES = 2;
 const AI_RETRY_DELAY_MS = 2000;
+
+// Gemini 3.5 Flash-Lite: Google's recommended model (as of mid-2026) for
+// high-volume, low-latency extraction/classification/translation tasks —
+// a good fit for an hourly bot translating/categorizing several headlines
+// per run. See AI_PIPELINE.md ("Why Gemini") for the full reasoning.
+const GEMINI_MODEL = "gemini-3.5-flash-lite";
+const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
 function log(level, message, meta) {
   const line = `[${level.toUpperCase()}] ${message}`;
@@ -79,21 +86,8 @@ function isValidAiResult(result) {
   );
 }
 
-async function callGroq(title) {
-  const response = await fetch(
-    "https://api.groq.com/openai/v1/chat/completions",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.GROQ_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
-        messages: [
-          {
-            role: "user",
-            content: `Analyze this news headline and return EXACTLY in this format:
+async function callGemini(title) {
+  const prompt = `Analyze this news headline and return EXACTLY in this format:
 
 CATEGORY: Technology
 URDU_TITLE: Urdu headline
@@ -104,30 +98,52 @@ FACEBOOK_POST: Complete Facebook post in Urdu
 IMAGE_PROMPT: Professional AI image prompt
 
 Headline:
-${title}`
-          }
-        ],
-        temperature: 0.7
-      })
-    }
-  );
+${title}`;
+
+  const response = await fetch(GEMINI_API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-goog-api-key": process.env.GEMINI_API_KEY
+    },
+    body: JSON.stringify({
+      contents: [
+        {
+          parts: [{ text: prompt }]
+        }
+      ]
+      // Note: Gemini 3.x models deprecate temperature/top_p/top_k tuning —
+      // Google recommends keeping generation defaults for these models,
+      // so no generationConfig override is sent here (unlike the previous
+      // Groq call, which used temperature: 0.7).
+    })
+  });
 
   if (!response.ok) {
-    throw new Error(`Groq API returned ${response.status}: ${response.statusText}`);
+    const errorBody = await response.text().catch(() => "");
+    throw new Error(
+      `Gemini API returned ${response.status}: ${response.statusText} ${errorBody}`.trim()
+    );
   }
 
   const data = await response.json();
-  const content = data?.choices?.[0]?.message?.content;
+
+  const blockReason = data?.promptFeedback?.blockReason;
+  if (blockReason) {
+    throw new Error(`Gemini blocked the request: ${blockReason}`);
+  }
+
+  const content = data?.candidates?.[0]?.content?.parts?.[0]?.text;
 
   if (!content) {
-    throw new Error("Groq API response missing message content");
+    throw new Error("Gemini API response missing content");
   }
 
   return content;
 }
 
 /**
- * Calls Groq with retries, then parses + validates the response.
+ * Calls Gemini with retries, then parses + validates the response.
  * Throws if no valid, well-formed result could be obtained.
  */
 async function analyzeNews(title) {
@@ -135,7 +151,7 @@ async function analyzeNews(title) {
 
   for (let attempt = 1; attempt <= AI_MAX_RETRIES + 1; attempt++) {
     try {
-      const aiText = await callGroq(title);
+      const aiText = await callGemini(title);
       const result = parseAiResponse(aiText);
 
       if (isValidAiResult(result)) {
@@ -146,7 +162,7 @@ async function analyzeNews(title) {
       log("warn", `AI response validation failed (attempt ${attempt})`, { title });
     } catch (error) {
       lastError = error;
-      log("warn", `Groq call failed (attempt ${attempt})`, { message: error.message });
+      log("warn", `Gemini call failed (attempt ${attempt})`, { message: error.message });
     }
 
     if (attempt <= AI_MAX_RETRIES) {
