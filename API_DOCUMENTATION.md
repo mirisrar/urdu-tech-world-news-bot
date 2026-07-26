@@ -134,7 +134,7 @@ Nexora Admin CMS uses approach **(a)** — direct Supabase JS client + RLS, no c
 
 Public website stays on `anon` SELECT-only. Bot stays on `service_role`. See `DATABASE_SCHEMA.md` / `rls-policy.sql`.
 
-Optional later (not required for Phase 7 done): custom routes for RSS source toggles or bot run logs (Phase 8).
+Bot run health (Phase 8) uses Telegram `sendMessage` via `monitoring/runAlert.js` — no custom Admin API. Optional later: `bot_runs` table + Admin logs viewer.
 | `POST` | `/api/webhooks/publish` | Manually trigger publish for an article | 7 |
 
 > Exact design will be finalized when Phase 6/7 begin — this section is a planning placeholder, not a committed contract yet.
@@ -150,8 +150,10 @@ Optional later (not required for Phase 7 done): custom routes for RSS source tog
 | `NEWS_API_KEY` | NewsAPI.org auth | No — optional source, skipped if unset |
 | `FACEBOOK_PAGE_ID` | Facebook publisher | No — optional channel, skipped if unset |
 | `FACEBOOK_PAGE_ACCESS_TOKEN` | Facebook publisher | No — optional channel, skipped if unset |
-| `TELEGRAM_BOT_TOKEN` | Telegram publisher | No — optional channel, skipped if unset |
-| `TELEGRAM_CHAT_ID` | Telegram publisher | No — optional channel, skipped if unset |
+| `TELEGRAM_BOT_TOKEN` | Telegram publisher + Phase 8 run alerts | No — optional; alerts skipped if unset |
+| `TELEGRAM_CHAT_ID` | Telegram publisher (+ alert fallback chat) | No — optional channel, skipped if unset |
+| `TELEGRAM_ALERT_CHAT_ID` | Phase 8 run alerts (preferred ops chat) | No — falls back to `TELEGRAM_CHAT_ID` |
+| `TELEGRAM_ALERT_MODE` | Phase 8 run alerts (`always`\|`failures`\|`off`) | No — defaults to `always` |
 | `WHATSAPP_PHONE_NUMBER_ID` | WhatsApp publisher | No — optional channel, skipped if unset |
 | `WHATSAPP_ACCESS_TOKEN` | WhatsApp publisher | No — optional channel, skipped if unset |
 | `WHATSAPP_TEMPLATE_NAME` | WhatsApp publisher | No — optional channel, skipped if unset |

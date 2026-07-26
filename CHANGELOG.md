@@ -4,6 +4,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). Versions abhi 
 
 ## [Unreleased]
 
+### Added (Phase 8 — Monitoring & Analytics)
+- Confirmed existing **Nexora CMS Analytics** (`analytics.html` / `analytics.js`) — views, charts, category breakdown, publishing report, CSV export — no rebuild in this bot repo.
+- New `monitoring/runAlert.js`: end-of-run Telegram health alert (processed/skipped/failed/duration + error snippets). Wired into `index.js` after every run and on fatal failure. Fail-soft; optional `TELEGRAM_ALERT_CHAT_ID` + `TELEGRAM_ALERT_MODE` (`always`|`failures`|`off`).
+- Workflow + `.env.example` updated for the new alert env vars.
+
 ### Added (Phase 7 — Admin Dashboard / shared schema + RLS)
 - Confirmed existing **Nexora CMS Admin** on the website (dashboard / news list / add-edit form) already covers news add, edit, save, and delete against the shared Supabase `news` table — no new Admin UI built in this bot repo.
 - `website-integration/database/schema-align.sql`: Admin columns (`views`, `featured`, `reading_time`), bot/publish columns, nullable `source`/`url` for manual posts, partial unique index on `url`.

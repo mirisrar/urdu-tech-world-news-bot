@@ -1,31 +1,33 @@
 # Folder Structure
 
-## Current Structure (as of Phase 6)
+## Current Structure (as of Phase 8)
 
 ```
 urdu-tech-world-news-bot/
 ├── .github/
 │   └── workflows/
 │       └── news.yml          # GitHub Actions cron automation
-├── publishers/                # ✅ Started the modularization (Phase 4)
+├── publishers/                # Phase 4 social publishers
 │   ├── facebook.js
 │   ├── telegram.js
 │   ├── x.js
 │   ├── whatsapp.js
 │   └── index.js               # publishAll() orchestrator
-├── website-integration/       # Phase 6 — meant to be COPIED into the Nexora News Urdu repo, not run by this bot
+├── monitoring/
+│   └── runAlert.js            # Phase 8 — Telegram end-of-run health alert
+├── website-integration/       # Phase 6 — copy into Nexora News Urdu repo
 │   ├── supabaseClient.js
 │   ├── newsApi.js
 │   ├── realtime.js
 │   ├── utils.js
 │   ├── config.example.js
-│   ├── database/rls-policy.sql   # anon read + authenticated CRUD + Storage
-│   ├── database/schema-align.sql # Bot + Admin shared columns / indexes
-│   ├── examples/               # reference HTML pages
+│   ├── database/rls-policy.sql
+│   ├── database/schema-align.sql
+│   ├── examples/
 │   └── README.md
-├── newsapi.js                 # NewsAPI.org client (Phase 2-adjacent)
-├── imagePipeline.js            # Download + optimize (sharp) + Supabase Storage upload (Phase 5)
-├── index.js                   # Collector + dedupe + AI + image + DB + publish orchestration
+├── newsapi.js
+├── imagePipeline.js
+├── index.js                   # Collector + dedupe + AI + image + DB + publish + run alert
 ├── package.json
 ├── README.md
 └── (documentation files — this set)
@@ -73,7 +75,9 @@ urdu-tech-world-news-bot/
 │
 ├── website-integration/            # ✅ Done (Phase 6) — already exists at repo root (see current structure above); no webhook publisher needed, direct Supabase read was the chosen approach
 │
-├── (Admin CMS lives in the website repo under admin/ — Phase 7 done)
+├── monitoring/
+│   └── runAlert.js               # Phase 8 — Telegram end-of-run health alert
+├── (Admin CMS + Analytics live in the website repo under admin/ — Phase 7/8 done)
 │   └── ...
 │
 ├── tests/

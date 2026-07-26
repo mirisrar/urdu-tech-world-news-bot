@@ -100,6 +100,7 @@ Currently: a single GitHub Actions workflow (`news.yml`) runs `node index.js` ho
 4. **Config over code** — sources, categories, and channel credentials should be configuration, not hardcoded values, to ease scaling (Phase 2, Phase 7).
 5. **Graceful schema drift** — new optional columns (`seo_title`, `fb_post_id`, etc.) degrade gracefully via `writeWithColumnFallback()` if their DB migration hasn't been applied yet, rather than breaking the whole pipeline (Phase 3/4).
 6. **Least-privilege credentials** (Phase 6 + 7) — three roles, one `news` table: bot writes with `SUPABASE_SERVICE_ROLE_KEY` (server-side, bypasses RLS); public website reads with `anon` (SELECT-only RLS); Admin CMS writes with Supabase Auth `authenticated` (CRUD RLS). Never put `service_role` in browser code.
+7. **Observable by default** (Phase 8) — Admin Analytics for content/views; Telegram end-of-run alerts for bot health so operators don't need to open GitHub Actions for every hourly run.
 
 ## Current Implementation vs. Target
 

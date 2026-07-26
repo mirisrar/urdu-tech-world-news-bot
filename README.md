@@ -35,4 +35,4 @@ node index.js
 
 ## Current Status
 
-See [`PROJECT_OVERVIEW.md`](./PROJECT_OVERVIEW.md#current-status-jaisa-project_roadmapmd-mein-detail-hai) for a full status table. In short: Phases 0–7 are done (~93%) — collection, Gemini AI, social publishing, image pipeline, website integration, and existing Nexora Admin CMS (with shared Supabase RLS/schema). Next: Phase 8 monitoring.
+See [`PROJECT_OVERVIEW.md`](./PROJECT_OVERVIEW.md#current-status-jaisa-project_roadmapmd-mein-detail-hai) for a full status table. In short: Phases 0–8 are done (~97%) — collection, Gemini AI, social publishing, image pipeline, website integration, Nexora Admin CMS, content analytics, and Telegram bot run alerts. Next: Phase 9 scale.

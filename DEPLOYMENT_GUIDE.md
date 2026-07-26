@@ -27,6 +27,8 @@ Yeh project currently ek **serverless-style deployment** use kar raha hai — ko
    - `NEWS_API_KEY` (NewsAPI.org source)
    - `FACEBOOK_PAGE_ID`, `FACEBOOK_PAGE_ACCESS_TOKEN` (Facebook publishing)
    - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` (Telegram publishing)
+   - `TELEGRAM_ALERT_CHAT_ID` (optional Phase 8 ops alert chat; falls back to `TELEGRAM_CHAT_ID`)
+   - `TELEGRAM_ALERT_MODE` (optional: `always` | `failures` | `off`; default `always`)
    - `X_API_KEY`, `X_API_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_TOKEN_SECRET` (X/Twitter publishing)
    - `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_TEMPLATE_NAME`, `WHATSAPP_RECIPIENT_NUMBERS` (WhatsApp publishing — see `AI_PIPELINE.md`/`PROJECT_ROADMAP.md` Phase 4 for the important WhatsApp Channel-vs-template-message scope note)
    - `SUPABASE_STORAGE_BUCKET` (agar step 2 mein default `news-images` ke ilawa koi aur naam use kiya ho), `DEFAULT_FALLBACK_IMAGE_URL` (last-resort image agar generation hi fail ho jaye)
@@ -63,7 +65,8 @@ Nexora News Urdu (HTML5/CSS3/Vanilla JS, Vercel-hosted, no framework) reads `new
 - Bot automation: since it's stateless (each run is independent), rollback = revert the `main` branch commit; next scheduled run uses the reverted code automatically. No manual "undo" of a bad automation run needed beyond fixing bad DB rows if any were inserted.
 - Website/Dashboard (future): use hosting platform's built-in rollback (Vercel/Netlify keep previous deployments one click away).
 
-## 6. Monitoring Deployment Health (ties into Phase 8)
+## 6. Monitoring Deployment Health (Phase 8 — done)
 
-- Currently: GitHub Actions run history (Actions tab) is the only visibility into success/failure.
-- Recommended: add a notification step (e.g. Slack/Telegram/email webhook) on workflow failure, so failures aren't only discovered by manually checking Actions tab.
+- **Content analytics**: Nexora Admin → `analytics.html` (views, charts, publishing report).
+- **Bot run alerts**: `monitoring/runAlert.js` sends a Telegram summary after each run (and on fatal errors). Configure `TELEGRAM_BOT_TOKEN` + `TELEGRAM_ALERT_CHAT_ID` (or reuse `TELEGRAM_CHAT_ID`). Set `TELEGRAM_ALERT_MODE=failures` to only alert when something fails.
+- GitHub Actions tab remains available for full logs.
