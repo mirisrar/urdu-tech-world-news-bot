@@ -4,6 +4,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). Versions abhi 
 
 ## [Unreleased]
 
+### Added (Phase 9 — Scalability & Optimization)
+- Parallel RSS collection via `Promise.allSettled` (fail-soft per source).
+- `dedupe.js`: near-duplicate title filtering (normalized Jaccard / containment) against recent DB headlines + in-batch titles.
+- `publishRetry.js`: DB-backed retry for recent rows missing social publish IDs; `publishAll({ onlyChannels })` support.
+- Env knobs: `TITLE_DEDUPE_LOOKBACK`, `TITLE_SIMILARITY_THRESHOLD`, `PUBLISH_RETRY_LIMIT`, `PUBLISH_RETRY_LOOKBACK_HOURS`.
+- Redis/BullMQ explicitly deferred — not needed at current GitHub Actions scale.
+
 ### Changed (original article images — AI images disabled)
 - Disabled Pollinations / AI `image_prompt` generation in `ai_agent.js` (prompt v4).
 - `fetcher.js` now extracts real images from RSS (`media:content`, `media:thumbnail`, `enclosure`, inline `<img>`) and from the article page (`og:image`, `twitter:image`).

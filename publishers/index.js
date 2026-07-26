@@ -36,25 +36,32 @@ function isChannelConfigured(channel) {
 }
 
 /**
- * Attempts to publish `payload` to every configured channel.
+ * @returns {string[]} configured channel names
+ */
+export function listConfiguredChannels() {
+  return CHANNELS.filter(isChannelConfigured).map((channel) => channel.name);
+}
+
+/**
+ * Attempts to publish `payload` to configured channels.
  *
- * Each channel is independent and fail-soft:
- * - A channel missing its required env vars is skipped silently
- *   (`{ published: false, skipped: true }`) — so the bot works unchanged
- *   for anyone who hasn't configured that channel yet.
- * - A channel that's configured but fails (bad token, API error, network
- *   issue) is caught and reported (`{ published: false, error }`), never
- *   thrown — one failing channel never blocks the others, and publishing
- *   never fails the underlying item, which is already saved to the
- *   database regardless of publish outcome.
- *
- * @param {object} payload - See individual publisher modules for the exact fields each one reads.
+ * @param {object} payload
+ * @param {{ onlyChannels?: string[] }} [options] - If set, only these channels
+ *   are attempted (used by Phase 9 publish retry for missing channels).
  * @returns {Promise<Record<string, { published: boolean, id?: string, skipped?: boolean, error?: string, partialErrors?: string[] }>>}
  */
-export async function publishAll(payload) {
+export async function publishAll(payload, options = {}) {
   const results = {};
+  const only = Array.isArray(options.onlyChannels)
+    ? new Set(options.onlyChannels.map(String))
+    : null;
 
   for (const channel of CHANNELS) {
+    if (only && !only.has(channel.name)) {
+      results[channel.name] = { published: false, skipped: true };
+      continue;
+    }
+
     if (!isChannelConfigured(channel)) {
       results[channel.name] = { published: false, skipped: true };
       continue;

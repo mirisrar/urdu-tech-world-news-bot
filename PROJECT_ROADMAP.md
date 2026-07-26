@@ -231,14 +231,17 @@ Social-platform likes/shares sync (Facebook/X metrics pull) **not** in scope —
 
 ---
 
-## Phase 9 — Scalability & Optimization — 🟢 Low
+## Phase 9 — Scalability & Optimization — ✅ Done (practical, no Redis)
 
-- [ ] Queue system (jaise BullMQ/Redis) taake multiple items parallel/ordered process ho sakein.
-- [ ] Caching layer (repeated AI calls avoid karne ke liye, e.g. similar headlines).
-- [ ] Worker-based architecture (collector, AI processor, publisher alag workers ke roop mein).
-- [ ] Performance tuning as volume badhay (zyada sources, zyada frequency).
+GitHub Actions + Supabase scale ke liye **Redis/BullMQ skip** kiya — current volume (10-min cron, tens of items/run) pe overkill. Practical optimizations shipped instead:
 
-**Done criteria**: System bina performance degradation ke, zyada sources/frequency handle kar sake.
+- [x] **Parallel RSS fetch** — `Promise.allSettled` across all sources (one slow/dead feed doesn't block others).
+- [x] **Title-similarity dedupe** (`dedupe.js`) — skip near-duplicate headlines across Google News + Dawn/Geo overlap (Jaccard / containment), on top of URL dedupe.
+- [x] **DB-backed publish retry queue** (`publishRetry.js`) — retry recent rows missing social channel IDs; no Redis. `publishAll({ onlyChannels })` retries only what's missing.
+- [x] **Env-tunable caps** — `MAX_ITEMS_*`, `TITLE_DEDUPE_LOOKBACK`, `PUBLISH_RETRY_LIMIT`, etc. (see `.env.example` / `news.yml`).
+- [ ] *(Deferred — only if volume 10x)* Redis/BullMQ, always-on workers, split collector/AI/publisher services.
+
+**Done criteria**: System bina performance degradation ke, zyada sources/frequency handle kar sake — **met** for current GitHub Actions deployment profile.
 
 ---
 
@@ -269,12 +272,10 @@ Har phase ko project ke overall scope ka ek weight diya gaya hai (bara/critical 
 | Phase 6 — Website Integration | 15% | ✅ Done |
 | Phase 7 — Admin Dashboard (existing Nexora CMS + RLS/schema align) | 8% | ✅ Done |
 | Phase 8 — Monitoring & Analytics (Admin analytics + Telegram run alerts) | 4% | ✅ Done |
-| Phase 9 — Scalability & Optimization | 3% | ⏳ Next |
+| Phase 9 — Scalability & Optimization (parallel RSS, title dedupe, publish retry) | 3% | ✅ Done |
 | **Total** | **100%** | |
 
-**Abhi tak (Phase 0 → Phase 8 done)**: **97% complete** (5% + 10% + 10% + 15% + 20% + 10% + 15% + 8% + 4%).
-
-**Phase 9 complete hone ke baad**: **100% complete** (97% + 3%).
+**Abhi tak (Phase 0 → Phase 9 done)**: **100% complete** (5% + 10% + 10% + 15% + 20% + 10% + 15% + 8% + 4% + 3%).
 
 **Note**: "Done" yahan **code implemented aur request-format live-verified** ka matlab hai (see Phase 4 status note above) — **real-account success path abhi tak kisi bhi phase ke external integrations (Gemini, NewsAPI, Facebook, Telegram, WhatsApp, X) mein live-verify nahi hua**, kyunke is dev environment mein in platforms ke real credentials available nahi the. Production mein real secrets add karne ke baad, ek manual `workflow_dispatch` run se in sab ko end-to-end confirm karna baaki hai.
 

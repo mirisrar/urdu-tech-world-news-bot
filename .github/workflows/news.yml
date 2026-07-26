@@ -36,6 +36,11 @@ jobs:
           MAX_ITEMS_PER_SOURCE: "25"
           MAX_ITEMS_PER_RUN: "40"
           AI_CALL_SPACING_MS: "1000"
+          # Phase 9 — title dedupe + DB publish retry (no Redis).
+          TITLE_DEDUPE_LOOKBACK: "200"
+          TITLE_SIMILARITY_THRESHOLD: "0.72"
+          PUBLISH_RETRY_LIMIT: "10"
+          PUBLISH_RETRY_LOOKBACK_HOURS: "48"
           # Optional — each source/channel below is skipped automatically if
           # its secrets aren't set. Add only the ones you actually use.
           NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}

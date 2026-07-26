@@ -28,7 +28,7 @@
 | Phase 6 | ✅ Done — direct Supabase JS SDK read from Nexora News Urdu (vanilla HTML/CSS/JS, Vercel), no webhook needed. `website-integration/` in this repo has the code to copy into the website's repo. | Website integration |
 | Phase 7 | ✅ Done — existing Nexora CMS Admin (vanilla HTML/JS) + Supabase Auth + shared RLS/schema | News add/edit/delete on same `news` table |
 | Phase 8 | ✅ Done — existing Admin Analytics (Chart.js + `news.views`) + Telegram run alerts (`monitoring/runAlert.js`) | Health & content visibility |
-| Phase 9 | Queue system (e.g. BullMQ + Redis, or Supabase Edge Functions/queues) | Scalability |
+| Phase 9 | ✅ Done — parallel RSS + title dedupe + DB publish retry (Redis/BullMQ deferred) | Scalability at current volume |
 
 ## Why these choices?
 
