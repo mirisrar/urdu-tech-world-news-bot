@@ -31,28 +31,30 @@ Git history (`d66f19e`, `17e4d00`, `ddcf0c3`, and the "Update index.js" commits 
 
 Since this is a genuine provider switch (not just a config tweak), a few Gemini-processed articles should be manually spot-checked against what Groq previously produced for the same headlines — specifically Urdu translation accuracy/fluency and whether the model reliably follows the `CATEGORY:`/`URDU_TITLE:`/etc. label format. If Gemini deviates from the expected format more often than Groq did, that's a signal to either adjust the prompt or move up the priority of Phase 3's structured-JSON-output work.
 
-## Current Prompt & Output Format (`ai_agent.js`, `PROMPT_VERSION = 3`)
+## Current Prompt & Output Format (`ai_agent.js`, `PROMPT_VERSION = 4`)
 
-Logic lives in **`ai_agent.js`**. Source text comes from **`fetcher.js`** (RSS `content:encoded` / content / summary + NewsAPI content/description) — not headline-only.
+Logic lives in **`ai_agent.js`**. Source text comes from **`fetcher.js`**.
 
 **System instruction (strict):**
 - `title_urdu`, `body_urdu`, `urdu_summary`, `seo_title`, `facebook_post` → Arabic-script Urdu only
 - `body_urdu` → full article, **3–4 paragraphs** (~300–450 words), never a teaser
-- `image_prompt` → unique, highly detailed **English** visual scene for *this* story
+- **No AI image fields** — Pollinations / `image_prompt` generation is disabled
 
-**Schema keys:** `title_urdu`, `body_urdu`, `image_prompt` (+ category/summary/seo/hashtags/facebook). Mapped to DB fields `urdu_title` / `article` / `image_prompt`.
+**Schema keys:** `title_urdu`, `body_urdu` (+ category/summary/seo/hashtags/facebook). Mapped to DB `urdu_title` / `article`.
+
+**Images:** `fetcher.resolveArticleImage()` uses RSS `media:content` / `enclosure` / inline `<img>`, then page `og:image` / `twitter:image`. Placeholder only if none found. `imagePipeline.js` may re-host that original URL in Supabase Storage.
 
 ```js
 generationConfig: {
   responseMimeType: "application/json",
-  responseSchema: RESPONSE_SCHEMA,  // ai_agent.js
+  responseSchema: RESPONSE_SCHEMA,  // ai_agent.js — text only
   maxOutputTokens: 4096
 }
 ```
 
 ### Validation (`isValidAiResult`)
 
-Requires Arabic-script Urdu in title/summary/body, `body_urdu` length ≥ ~450 chars, and a non-generic `image_prompt` (generic prompts are replaced with a topic-specific prompt from title + source text). Retries with backoff; still-invalid items are skipped.
+Requires Arabic-script Urdu in title/summary/body and `body_urdu` length ≥ ~450 chars. Retries with backoff; still-invalid items are skipped.
 
 ### ⚠️ `seoTitle` requires a DB migration
 

@@ -1,9 +1,14 @@
 import { createClient } from "@supabase/supabase-js";
 import { fetchNewsFromNewsApi } from "./newsapi.js";
 import { publishAll } from "./publishers/index.js";
-import { getArticleImageUrl } from "./imagePipeline.js";
+import { storeOriginalArticleImage } from "./imagePipeline.js";
 import { sendRunAlert } from "./monitoring/runAlert.js";
-import { fetchRssFeed, normalizeNewsApiArticle, hasUsableSourceText } from "./fetcher.js";
+import {
+  fetchRssFeed,
+  normalizeNewsApiArticle,
+  hasUsableSourceText,
+  resolveArticleImage
+} from "./fetcher.js";
 import { analyzeNews, PROMPT_VERSION } from "./ai_agent.js";
 
 // Phase 6: the website (Nexora News Urdu) now reads the `news` table
@@ -125,7 +130,8 @@ function buildNewsRow(item, sourceName, aiResult, imageUrl) {
     article: aiResult.article,
     hashtags: aiResult.hashtags,
     facebook_post: aiResult.facebookPost,
-    image_prompt: aiResult.imagePrompt,
+    // AI image prompts disabled — column left empty / omitted via fallback if unused.
+    image_prompt: "",
     image_url: imageUrl
   };
 }
@@ -278,6 +284,18 @@ async function processItem(item, sourceName) {
     return "skipped";
   }
 
+  // Original article image (RSS media / enclosure / og:image / twitter:image).
+  // AI / Pollinations image generation is disabled.
+  const { imageUrl: originalImageUrl, source: imageSource } = await resolveArticleImage(item, log);
+  const imageUrl = await storeOriginalArticleImage(supabase, originalImageUrl, item.title, log);
+
+  log("info", "Resolved original article image", {
+    source: sourceName,
+    title: item.title,
+    imageSource,
+    imageUrl: (imageUrl || "").slice(0, 120)
+  });
+
   // Pass full extracted source text (not just headline) so Gemini can write
   // a real Urdu article body — see fetcher.js + ai_agent.js.
   const aiResult = await analyzeNews(
@@ -292,13 +310,8 @@ async function processItem(item, sourceName) {
   log("info", "AI Urdu package ready", {
     source: sourceName,
     title: item.title,
-    bodyLength: aiResult.article?.length || 0,
-    imagePromptPreview: (aiResult.imagePrompt || "").slice(0, 80)
+    bodyLength: aiResult.article?.length || 0
   });
-
-  // Phase 5: unique topic prompt → Pollinations (seeded) → optimize → Storage.
-  // No static/generic image prompt fallback (see imagePipeline.js).
-  const imageUrl = await getArticleImageUrl(supabase, aiResult.imagePrompt, item.title, log);
 
   const newsId = await saveNews(item, sourceName, aiResult, imageUrl);
   log("info", "News saved with full AI analysis", { title: item.title, source: sourceName });
