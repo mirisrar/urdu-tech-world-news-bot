@@ -4,6 +4,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). Versions abhi 
 
 ## [Unreleased]
 
+### Fixed (local Pakistan coverage)
+- Added Google News Pakistan RSS first in `SOURCES`: `hl=en-PK&gl=PK&ceid=PK:en` and Urdu `hl=ur&gl=PK&ceid=PK:ur` (verified live; geo/PK section feed is unavailable).
+- Parse Google “Headline - Publisher” titles so DB `source` stores the real outlet (Dawn, Radio Pakistan, etc.).
+
 ### Fixed (Urdu content quality + unique images)
 - New `fetcher.js`: extracts richest RSS/NewsAPI source text (`content:encoded` → content → summary/description) so the AI is not headline-only.
 - New `ai_agent.js` (prompt v3): strict Urdu system instruction, schema keys `title_urdu` / `body_urdu` / `image_prompt`, min-length + Arabic-script validation, rejects English/short bodies.
