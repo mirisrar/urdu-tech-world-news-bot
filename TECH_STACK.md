@@ -9,7 +9,7 @@
 | News Aggregation (optional) | [NewsAPI.org](https://newsapi.org) (`newsapi.js`) | Keyword-based news search (e.g. `"technology"`) as an additional source; skipped if `NEWS_API_KEY` unset |
 | Database | [Supabase](https://supabase.com) (Postgres + JS client `@supabase/supabase-js`) | News data storage |
 | AI / LLM | [Google Gemini API](https://ai.google.dev) — model `gemini-3.5-flash-lite` | Urdu translation, summary, categorization, post generation |
-| Image Generation | [Pollinations.ai](https://pollinations.ai) (source image) | AI image prompt se image generate karna |
+| Article images | Original publisher image (RSS `media:` / `enclosure` / `og:image`) + optional Supabase Storage re-host | Real news photos; AI/Pollinations generation disabled |
 | Image Processing (Phase 5) | [`sharp`](https://sharp.pixelplumbing.com) | Resize (1200x630) + re-encode (WebP, quality 80) |
 | Image Storage (Phase 5) | Supabase Storage | Permanent, publicly-accessible image hosting |
 | Social Publishing (Phase 4) | Facebook Graph API, Telegram Bot API, X (Twitter) API v2 (OAuth1.0a), WhatsApp Business Cloud API | `publishers/` module — har channel optional, skipped agar configured na ho |
