@@ -31,39 +31,28 @@ Git history (`d66f19e`, `17e4d00`, `ddcf0c3`, and the "Update index.js" commits 
 
 Since this is a genuine provider switch (not just a config tweak), a few Gemini-processed articles should be manually spot-checked against what Groq previously produced for the same headlines — specifically Urdu translation accuracy/fluency and whether the model reliably follows the `CATEGORY:`/`URDU_TITLE:`/etc. label format. If Gemini deviates from the expected format more often than Groq did, that's a signal to either adjust the prompt or move up the priority of Phase 3's structured-JSON-output work.
 
-## Current Prompt & Output Format (Phase 3 — structured JSON, implemented in PR #5)
+## Current Prompt & Output Format (`ai_agent.js`, `PROMPT_VERSION = 3`)
 
-**Prompt** (`PROMPT_VERSION = 3` (see `ai_agent.js`) in `index.js`):
+Logic lives in **`ai_agent.js`**. Source text comes from **`fetcher.js`** (RSS `content:encoded` / content / summary + NewsAPI content/description) — not headline-only.
 
-```
-You are a professional Urdu news editor. Analyze the following English news headline and produce Urdu content for a news platform, following the response schema exactly.
+**System instruction (strict):**
+- `title_urdu`, `body_urdu`, `urdu_summary`, `seo_title`, `facebook_post` → Arabic-script Urdu only
+- `body_urdu` → full article, **3–4 paragraphs** (~300–450 words), never a teaser
+- `image_prompt` → unique, highly detailed **English** visual scene for *this* story
 
-Headline:
-<headline text>
-```
-
-Notice this is much shorter than the old v1 prompt — it no longer needs to spell out a `LABEL: value` format in the prompt text itself, because the **API call now enforces the output shape directly** via `generationConfig`:
+**Schema keys:** `title_urdu`, `body_urdu`, `image_prompt` (+ category/summary/seo/hashtags/facebook). Mapped to DB fields `urdu_title` / `article` / `image_prompt`.
 
 ```js
 generationConfig: {
   responseMimeType: "application/json",
-  responseSchema: RESPONSE_SCHEMA   // see index.js for the full schema
+  responseSchema: RESPONSE_SCHEMA,  // ai_agent.js
+  maxOutputTokens: 4096
 }
 ```
 
-`RESPONSE_SCHEMA` declares an object with `category`, `urduTitle`, `urduSummary`, **`seoTitle`** (new), `article`, `hashtags` (array of strings), `facebookPost`, and `imagePrompt`, all marked `required`. Gemini's "controlled generation" feature constrains the model's output to match this schema — so unlike the old free-text approach, malformed *shape* (missing labels, wrong order, extra prose) is no longer possible by construction. We only need to validate *content* (are the required fields actually non-empty), not *shape*.
+### Validation (`isValidAiResult`)
 
-### Output Parsing (JSON.parse, replacing regex — Phase 3)
-
-`parseAiResponse()` now does:
-
-```js
-const parsed = JSON.parse(aiText);
-```
-
-wrapped in a try/catch (truncated output — e.g. hitting a token limit — could still produce invalid JSON even with a schema, so this is never assumed to be 100% guaranteed). Each field is defensively type-checked (`typeof parsed.X === "string"`) before use, and `hashtags` (returned by Gemini as a string array) is joined into a single space-separated string for storage — **no DB migration needed for this field**, since the existing `hashtags` column is `text`, not an array type.
-
-A response is only accepted if `urduTitle`, `urduSummary`, and `article` are all non-empty (`isValidAiResult`); otherwise the call is retried (up to 2 times with backoff), and if still invalid, the item is skipped and logged rather than saved with empty fields — same fail-soft philosophy as Phase 1.
+Requires Arabic-script Urdu in title/summary/body, `body_urdu` length ≥ ~450 chars, and a non-generic `image_prompt` (generic prompts are replaced with a topic-specific prompt from title + source text). Retries with backoff; still-invalid items are skipped.
 
 ### ⚠️ `seoTitle` requires a DB migration
 
