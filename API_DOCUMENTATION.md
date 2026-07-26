@@ -120,20 +120,21 @@ Unlike every other integration in this document, this direction is **inbound, no
 
 All previously "planned" external APIs (Facebook, Telegram, X, WhatsApp, Supabase Storage) are now implemented — see §1 above. Nothing currently planned/outstanding at the external-API level; Phase 7+ needs are internal (§3 below).
 
-## 3. Planned Internal API (Future — Admin Dashboard, Phase 7)
+## 3. Admin CMS API (Phase 7 — done via direct Supabase)
 
-The website (Phase 6, done) uses approach (a) below directly — no custom backend was needed for it. Phase 7 (Admin Dashboard) will likely need one of:
+Nexora Admin CMS uses approach **(a)** — direct Supabase JS client + RLS, no custom backend:
 
-- **(a) Direct Supabase client access** (same pattern as the website — Supabase's auto-generated REST/Realtime API + RLS policies) — no custom backend needed, but the dashboard would need its own RLS policies/role (e.g. via Supabase Auth) distinct from the public anon role, since it needs write access (edit/unpublish articles, manage sources) that the public role must not have.
-- **(b) A custom lightweight API layer** (e.g. Next.js API routes) if business logic (e.g. manual publish triggers, admin actions, audit logging) needs to live server-side rather than directly against the DB.
+| Operation | How | Role |
+|---|---|---|
+| List / search news | `from("news").select("*")` (`news.js`) | `authenticated` |
+| Create news | `from("news").insert(...)` (`add-news.js`) | `authenticated` |
+| Update news | `from("news").update(...).eq("id", id)` | `authenticated` |
+| Delete news | `from("news").delete().eq("id", id)` | `authenticated` |
+| Upload image | `storage.from("news-images").upload(...)` | `authenticated` |
 
-### Proposed Endpoints (if a custom API layer is built for the dashboard)
+Public website stays on `anon` SELECT-only. Bot stays on `service_role`. See `DATABASE_SCHEMA.md` / `rls-policy.sql`.
 
-| Method | Path | Purpose | Phase |
-|---|---|---|---|
-| `POST` | `/api/admin/sources` | Add/update RSS source | 7 |
-| `PATCH` | `/api/admin/news/:id` | Edit/unpublish an article | 7 |
-| `GET` | `/api/admin/logs` | View bot run logs | 7, 8 |
+Optional later (not required for Phase 7 done): custom routes for RSS source toggles or bot run logs (Phase 8).
 | `POST` | `/api/webhooks/publish` | Manually trigger publish for an article | 7 |
 
 > Exact design will be finalized when Phase 6/7 begin — this section is a planning placeholder, not a committed contract yet.

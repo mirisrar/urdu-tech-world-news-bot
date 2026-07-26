@@ -4,6 +4,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). Versions abhi 
 
 ## [Unreleased]
 
+### Added (Phase 7 — Admin Dashboard / shared schema + RLS)
+- Confirmed existing **Nexora CMS Admin** on the website (dashboard / news list / add-edit form) already covers news add, edit, save, and delete against the shared Supabase `news` table — no new Admin UI built in this bot repo.
+- `website-integration/database/schema-align.sql`: Admin columns (`views`, `featured`, `reading_time`), bot/publish columns, nullable `source`/`url` for manual posts, partial unique index on `url`.
+- Updated `website-integration/database/rls-policy.sql`: `anon` SELECT-only; `authenticated` full CRUD on `news`; Storage policies for `news-images` (public read, authenticated upload). Bot continues to use `service_role` (RLS bypass).
+- Docs: Phase 7 marked ✅ Done; `DATABASE_SCHEMA.md` / `SECURITY_GUIDELINES.md` describe Bot + Admin + Public three-role access model.
+
 ### Added
 - Full project documentation suite: `PROJECT_OVERVIEW.md`, `PROJECT_ROADMAP.md`, `PROJECT_RULES.md`, `TECH_STACK.md`, `ARCHITECTURE.md`, `DATABASE_SCHEMA.md`, `API_DOCUMENTATION.md`, `BOT_ARCHITECTURE.md`, `AI_PIPELINE.md`, `FOLDER_STRUCTURE.md`, `UI_UX_GUIDELINES.md`, `CODING_STANDARDS.md`, `DEVELOPMENT_WORKFLOW.md`, `DEPLOYMENT_GUIDE.md`, `TESTING_GUIDE.md`, `SECURITY_GUIDELINES.md`, `CONTRIBUTING.md`.
 - 9-phase project roadmap (Stability → Multi-Source → AI Pipeline → Publishing → Images → Website → Dashboard → Monitoring → Scale), with a weighted completion-percentage tracker.

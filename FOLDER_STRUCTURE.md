@@ -19,7 +19,8 @@ urdu-tech-world-news-bot/
 │   ├── realtime.js
 │   ├── utils.js
 │   ├── config.example.js
-│   ├── database/rls-policy.sql
+│   ├── database/rls-policy.sql   # anon read + authenticated CRUD + Storage
+│   ├── database/schema-align.sql # Bot + Admin shared columns / indexes
 │   ├── examples/               # reference HTML pages
 │   └── README.md
 ├── newsapi.js                 # NewsAPI.org client (Phase 2-adjacent)
@@ -72,7 +73,7 @@ urdu-tech-world-news-bot/
 │
 ├── website-integration/            # ✅ Done (Phase 6) — already exists at repo root (see current structure above); no webhook publisher needed, direct Supabase read was the chosen approach
 │
-├── dashboard/                    # (Phase 7, if built as a separate app)
+├── (Admin CMS lives in the website repo under admin/ — Phase 7 done)
 │   └── ...
 │
 ├── tests/
@@ -92,7 +93,7 @@ urdu-tech-world-news-bot/
 
 - This restructuring is **not required for Phase 1** (bug fixes can land in `index.js` as-is). It becomes worthwhile starting **Phase 2/3**, when multiple sources and a dedicated AI module justify separate files.
 - Migrate incrementally — extract one concern at a time (e.g. `db/news.repository.js` first, since it's the simplest, well-bounded piece), rather than a single big-bang rewrite.
-- Nexora News Urdu (the website) is an **existing, already-deployed site external to this repo** — no `website/` folder is needed here; `website-integration/` holds code meant to be copied *into* that separate repo, not run from this one. `dashboard/` (Phase 7) is still undecided (separate repo vs. this one).
+- Nexora News Urdu (the website) is an **existing, already-deployed site external to this repo** — no `website/` folder is needed here; `website-integration/` holds code meant to be copied *into* that separate repo. Admin CMS already lives in the website repo under `admin/` (Phase 7 done).
 
 ## Root-Level Documentation Files (current)
 

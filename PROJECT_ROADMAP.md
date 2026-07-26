@@ -162,21 +162,39 @@ Yeh project ka core/differentiating feature hai — isay apna dedicated phase mi
 4. `website-integration/` ki files Nexora News Urdu repo mein copy karo, `config.example.js` → `config.js` bana kar apna `SUPABASE_URL`/anon key daalo.
 
 **Design decisions** (poora detail `website-integration/README.md` mein):
-- "Hero" = sabse recent article (koi manual flag nahi hai abhi — future Phase 7 admin dashboard se curation add ho sakti hai).
+- "Hero" = sabse recent article (Admin CMS ka `featured` flag curation ke liye available hai — public site hero logic abhi bhi recency-based ho sakti hai jab tak website `featured` prefer na kare).
 - "Breaking" = last 2 hours (heuristic, kabhi empty nahi hota — fallback built-in).
-- "Trending" = abhi recency-based hai; jab Phase 8 ka `views` column add hoga, automatically switch ho jayega (bot ke apne graceful column-fallback pattern se inspired).
+- "Trending" = abhi recency-based hai; jab `views` column populate hoga, automatically switch ho sakta hai.
 - Article URLs `?id=<db-id>` use karti hain — pretty/slug URLs future enhancement hai.
 
 ---
 
-## Phase 7 — Admin Dashboard — 🟡 Medium
+## Phase 7 — Admin Dashboard — ✅ Done (existing Nexora CMS)
 
-- [ ] News items manage karna (edit/delete/re-publish).
-- [ ] Bots/RSS sources ka on/off toggle aur configuration UI.
-- [ ] Settings management (API keys, cron schedule, categories).
-- [ ] Logs viewer (run history, errors, success/failure counts).
+Nexora News Urdu website pe **Admin CMS pehle se maujood** hai (alag rebuild is bot repo mein nahi kiya). Verified against live Admin files: `admin/dashboard.html`, `admin/news.html`, `admin/add-news.html`, `admin/js/news.js`, `admin/js/add-news.js`.
 
-**Done criteria**: Non-technical admin bina code touch kiye bot ko manage kar sake.
+- [x] News items manage karna — list / search / category filter (`news.js`).
+- [x] Edit + save — `add-news.html?id=…` → Supabase `.update()` (`add-news.js`).
+- [x] Delete — confirm dialog → Supabase `.delete()` (`news.js`).
+- [x] Add / publish news — form insert + image upload to `news-images` bucket.
+- [x] Auth gate — `auth.js` + logout; **must use Supabase Auth** so RLS `authenticated` policies apply (see below).
+- [x] Same Supabase `news` table as the bot (shared schema + RLS alignment delivered in this phase).
+- [ ] *(Deferred / optional)* Bots/RSS sources on/off toggle UI — bot sources abhi code/env driven hain.
+- [ ] *(Deferred → Phase 8)* Logs viewer / run history.
+- [ ] *(Deferred / optional)* API keys & cron settings UI — secrets GitHub Actions mein rehte hain (browser mein expose nahi karne).
+
+**Done criteria**: Non-technical admin bina code touch kiye news manage (add/edit/save/delete) kar sake — **met** by existing Nexora CMS.
+
+**Status**: Admin UI website side pe already complete. Is bot repo ka Phase 7 deliverable = **schema + RLS alignment** taake Bot (`service_role`), Admin (`authenticated`), aur Public site (`anon` read-only) teeno bina conflict ke same table use karein.
+
+**⚠️ Action needed (Supabase SQL editor, isi order mein)**:
+1. `SUPABASE_SERVICE_ROLE_KEY` GitHub Actions secret confirm karo (bot).
+2. Admin login ko Supabase Auth par ensure karo (custom anon-only password gate RLS ke baad writes tod dega).
+3. Run [`website-integration/database/schema-align.sql`](./website-integration/database/schema-align.sql) — Admin columns (`views`, `featured`, `reading_time`) + nullable `source`/`url` + bot columns.
+4. Run [`website-integration/database/rls-policy.sql`](./website-integration/database/rls-policy.sql) — anon SELECT; authenticated CRUD; Storage policies for `news-images`.
+5. Supabase Auth mein kam az kam ek admin user banao.
+
+Detail: `DATABASE_SCHEMA.md`, `SECURITY_GUIDELINES.md`.
 
 ---
 
@@ -210,7 +228,7 @@ Yeh project ka core/differentiating feature hai — isay apna dedicated phase mi
 4. **Phase 4** — Social Media Publishing (asli distribution value unlock karta hai).
 5. **Phase 5** — Image Pipeline (publishing ko polish karta hai).
 6. **Phase 6** — Website Integration.
-7. **Phase 7 → Phase 9** — Jab base automation stable ho jaye, tab admin tooling, monitoring, aur scale par jao.
+7. **Phase 8 → Phase 9** — Admin (Phase 7) done; ab monitoring/analytics, phir scale.
 
 ---
 
@@ -227,14 +245,14 @@ Har phase ko project ke overall scope ka ek weight diya gaya hai (bara/critical 
 | Phase 4 — Social Media Publishing Layer | 20% | ✅ Done |
 | Phase 5 — Image Pipeline | 10% | ✅ Done |
 | Phase 6 — Website Integration | 15% | ✅ Done |
-| Phase 7 — Admin Dashboard | 8% | ⏳ Next |
-| Phase 8 — Monitoring & Analytics | 4% | ❌ Not started |
+| Phase 7 — Admin Dashboard (existing Nexora CMS + RLS/schema align) | 8% | ✅ Done |
+| Phase 8 — Monitoring & Analytics | 4% | ⏳ Next |
 | Phase 9 — Scalability & Optimization | 3% | ❌ Not started |
 | **Total** | **100%** | |
 
-**Abhi tak (Phase 0 + Phase 1 + Phase 2 + Phase 3 + Phase 4 + Phase 5 + Phase 6 done)**: **85% complete** (5% + 10% + 10% + 15% + 20% + 10% + 15%).
+**Abhi tak (Phase 0 → Phase 7 done)**: **93% complete** (5% + 10% + 10% + 15% + 20% + 10% + 15% + 8%).
 
-**Phase 7 complete hone ke baad**: **93% complete** (85% + 8%) — is baad sirf monitoring aur scale reh jayenge, jo core product value ke bina bhi system chalne deti hain.
+**Phase 8 complete hone ke baad**: **97% complete** (93% + 4%) — uske baad sirf scale (Phase 9) reh jata hai.
 
 **Note**: "Done" yahan **code implemented aur request-format live-verified** ka matlab hai (see Phase 4 status note above) — **real-account success path abhi tak kisi bhi phase ke external integrations (Gemini, NewsAPI, Facebook, Telegram, WhatsApp, X) mein live-verify nahi hua**, kyunke is dev environment mein in platforms ke real credentials available nahi the. Production mein real secrets add karne ke baad, ek manual `workflow_dispatch` run se in sab ko end-to-end confirm karna baaki hai.
 

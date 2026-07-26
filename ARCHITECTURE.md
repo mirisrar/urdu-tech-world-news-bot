@@ -99,7 +99,7 @@ Currently: a single GitHub Actions workflow (`news.yml`) runs `node index.js` ho
 3. **Fail-soft** — a failure in one item/source/channel should not halt the entire pipeline (Phase 1 principle, extended through Phase 4's publishers).
 4. **Config over code** — sources, categories, and channel credentials should be configuration, not hardcoded values, to ease scaling (Phase 2, Phase 7).
 5. **Graceful schema drift** — new optional columns (`seo_title`, `fb_post_id`, etc.) degrade gracefully via `writeWithColumnFallback()` if their DB migration hasn't been applied yet, rather than breaking the whole pipeline (Phase 3/4).
-6. **Least-privilege credentials** (Phase 6) — the bot writes with `SUPABASE_SERVICE_ROLE_KEY` (server-side only, bypasses RLS); the public website reads with `SUPABASE_ANON_KEY` (safe to expose client-side, restricted to read-only by RLS). Two different keys/roles for two very different trust levels, even though they access the same table.
+6. **Least-privilege credentials** (Phase 6 + 7) — three roles, one `news` table: bot writes with `SUPABASE_SERVICE_ROLE_KEY` (server-side, bypasses RLS); public website reads with `anon` (SELECT-only RLS); Admin CMS writes with Supabase Auth `authenticated` (CRUD RLS). Never put `service_role` in browser code.
 
 ## Current Implementation vs. Target
 
