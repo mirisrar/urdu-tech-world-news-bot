@@ -278,9 +278,20 @@ export async function resolveArticleImage(item, log = () => {}) {
   }
 
   if (item.link) {
-    const og = await fetchOgImageFromPage(item.link, log);
-    if (og) {
-      return { imageUrl: og, source: "meta" };
+    // Skip hopeless OG fetches on Google News aggregator pages (no og:image;
+    // publisher URL is JS-gated). Direct Dawn/Geo/BBC/etc. links work fine.
+    const isGoogleNews =
+      /news\.google\.com/i.test(item.link) || /google\.com\/.*\/articles\//i.test(item.link);
+
+    if (!isGoogleNews) {
+      const og = await fetchOgImageFromPage(item.link, log);
+      if (og) {
+        return { imageUrl: og, source: "meta" };
+      }
+    } else {
+      log("info", "Google News link has no RSS media image — using placeholder", {
+        title: item.title
+      });
     }
   }
 
