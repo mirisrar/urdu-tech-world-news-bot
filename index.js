@@ -33,11 +33,28 @@ const supabase = createClient(process.env.SUPABASE_URL, supabaseWriteKey);
 // Config-driven list of RSS sources (Phase 2). Each is fetched independently;
 // a failure fetching one source does not stop the others (fail-soft).
 //
-// Reuters was considered (per PROJECT_ROADMAP.md Phase 2) but is intentionally
-// omitted: their public RSS feeds were discontinued around 2020 and the
-// documented feed URLs no longer return valid RSS (verified before adding
-// this list — see PROJECT_ROADMAP.md Phase 2 notes).
+// Pakistan / local coverage: Google News RSS is listed FIRST so local stories
+// fill the per-run cap before international feeds. Direct Dawn/Geo/ARY feeds
+// still work in many environments, but GitHub Actions runners sometimes see
+// blocks/timeouts — Google News aggregates those same publishers reliably.
+//
+// Verified 2026-07-26:
+//   ✅ https://news.google.com/rss?hl=en-PK&gl=PK&ceid=PK:en  (~38 items)
+//   ✅ https://news.google.com/rss?hl=ur&gl=PK&ceid=PK:ur     (~38 items)
+//   ❌ https://news.google.com/rss/headlines/section/geo/PK   ("feed not available")
+//
+// Reuters public RSS remains omitted (feeds discontinued ~2020).
 const SOURCES = [
+  {
+    name: "Google News PK",
+    url: "https://news.google.com/rss?hl=en-PK&gl=PK&ceid=PK:en",
+    googleNews: true
+  },
+  {
+    name: "Google News Urdu",
+    url: "https://news.google.com/rss?hl=ur&gl=PK&ceid=PK:ur",
+    googleNews: true
+  },
   { name: "BBC", url: "https://feeds.bbci.co.uk/news/rss.xml" },
   { name: "Al Jazeera", url: "https://www.aljazeera.com/xml/rss/all.xml" },
   { name: "Dawn", url: "https://www.dawn.com/feeds/home" },
@@ -292,12 +309,19 @@ async function collectRssItems() {
 
   for (const source of SOURCES) {
     try {
-      const { items } = await fetchRssFeed(source.url, MAX_ITEMS_PER_SOURCE);
+      const { items } = await fetchRssFeed(source.url, MAX_ITEMS_PER_SOURCE, {
+        googleNews: Boolean(source.googleNews)
+      });
       log("info", `Fetched ${items.length} items from ${source.name}`, {
         withContent: items.filter((i) => (i.rawContent || "").length >= 80).length
       });
       for (const item of items) {
-        collected.push({ item, sourceName: source.name });
+        // Prefer the publisher Google News embeds in the title (Dawn, Geo, …)
+        // so the DB `source` column reflects the real outlet, not just the aggregator.
+        const sourceName = item.publisher
+          ? `${source.name} / ${item.publisher}`
+          : source.name;
+        collected.push({ item, sourceName });
       }
     } catch (error) {
       log("error", `Failed to fetch feed for ${source.name}`, {

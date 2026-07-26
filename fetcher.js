@@ -86,17 +86,42 @@ export function normalizeNewsApiArticle(article) {
 }
 
 /**
+ * Google News titles are usually "Headline - Publisher".
+ * @param {string} title
+ * @returns {{ headline: string, publisher: string }}
+ */
+export function parseGoogleNewsTitle(title) {
+  const raw = String(title || "").trim();
+  const match = raw.match(/^(.*?)\s+-\s+(.+)$/);
+  if (!match) {
+    return { headline: raw, publisher: "" };
+  }
+  return { headline: match[1].trim(), publisher: match[2].trim() };
+}
+
+/**
  * Normalize an RSS item into the shared collector item shape.
  * @param {object} item - rss-parser item
+ * @param {{ googleNews?: boolean }} [options]
  */
-export function normalizeRssItem(item) {
+export function normalizeRssItem(item, options = {}) {
   const { description, rawContent } = extractRssText(item);
+  let title = (item.title || "").trim();
+  let publisher = "";
+
+  if (options.googleNews) {
+    const parsed = parseGoogleNewsTitle(title);
+    title = parsed.headline || title;
+    publisher = parsed.publisher;
+  }
+
   return {
-    title: (item.title || "").trim(),
+    title,
     link: item.link || item.guid || "",
     description,
     rawContent,
-    imageHint: item.enclosure?.url || ""
+    imageHint: item.enclosure?.url || "",
+    publisher
   };
 }
 
@@ -104,11 +129,12 @@ export function normalizeRssItem(item) {
  * Fetch and normalize items from one RSS feed URL.
  * @param {string} feedUrl
  * @param {number} [limit=3]
+ * @param {{ googleNews?: boolean }} [options]
  * @returns {Promise<{ feedTitle: string, items: ReturnType<typeof normalizeRssItem>[] }>}
  */
-export async function fetchRssFeed(feedUrl, limit = 3) {
+export async function fetchRssFeed(feedUrl, limit = 3, options = {}) {
   const feed = await parser.parseURL(feedUrl);
-  const items = (feed.items || []).slice(0, limit).map(normalizeRssItem);
+  const items = (feed.items || []).slice(0, limit).map((item) => normalizeRssItem(item, options));
   return { feedTitle: feed.title || "", items };
 }
 
