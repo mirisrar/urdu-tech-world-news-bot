@@ -1,24 +1,19 @@
 /**
- * AI agent (JS equivalent of ai_agent.py).
+ * AI agent — Urdu news package generation only.
  *
- * Fixes:
- *  1. Strict Urdu (Arabic-script) output for title + full article body
- *  2. Minimum-length full article (3–4 paragraphs), not headline-only
- *  3. Per-article unique, topic-specific image_prompt (never a static/
- *     generic fallback prompt)
- *
- * Gemini JSON schema uses the requested keys title_urdu / body_urdu /
- * image_prompt, then maps them to the bot's existing DB field names
- * (urduTitle / article / imagePrompt) for saveNews().
+ * Image generation / image_prompt is intentionally DISABLED.
+ * Article images come from the original news site via fetcher.js
+ * (RSS media tags + og:image / twitter:image).
  */
 
 const GEMINI_MODEL = "gemini-3.5-flash-lite";
 const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
 // Prompt version history:
-//   v2 — structured JSON, headline-only input (often English / short body)
-//   v3 — full source text in, strict Urdu body, unique image_prompt (this fix)
-export const PROMPT_VERSION = 3;
+//   v2 — structured JSON, headline-only input
+//   v3 — full source text + strict Urdu + AI image_prompt
+//   v4 — AI image_prompt removed; images from original article only
+export const PROMPT_VERSION = 4;
 
 const AI_MAX_RETRIES = 2;
 const AI_RETRY_DELAY_MS = 2000;
@@ -35,11 +30,11 @@ HARD RULES — violate none of these:
 1. Write title_urdu, body_urdu, urdu_summary, seo_title, and facebook_post ONLY in clean Urdu using Arabic script (اردو). Do NOT write those fields in English, Roman Urdu, or Hindi Devanagari.
 2. body_urdu MUST be a FULL news article: at least 3 to 4 detailed paragraphs (roughly 300–450 Urdu words). Never return only a headline, one sentence, or a short teaser as body_urdu.
 3. Expand from the provided English source title + source text. Stay factual; do not invent quotes or statistics not supported by the source. If source text is thin, write a careful multi-paragraph Urdu news brief from the headline facts only.
-4. image_prompt MUST be a unique, highly detailed ENGLISH visual description of THIS specific story's subject (people, objects, setting, mood, lighting). Never use a generic prompt like "news image", "breaking news", "technology concept", or reuse a template. No text/letters/watermarks in the image.
+4. Do NOT generate image prompts, image URLs, or any visual-generation fields. Images are handled separately from the original news website.
 5. Follow the JSON schema exactly.`;
 
 /**
- * Gemini responseSchema — includes requested title_urdu / body_urdu / image_prompt.
+ * Gemini responseSchema — text fields only (no image_prompt).
  */
 export const RESPONSE_SCHEMA = {
   type: "OBJECT",
@@ -73,11 +68,6 @@ export const RESPONSE_SCHEMA = {
     facebook_post: {
       type: "STRING",
       description: "Ready-to-publish Facebook post entirely in Urdu (Arabic script)"
-    },
-    image_prompt: {
-      type: "STRING",
-      description:
-        "Unique, highly detailed ENGLISH scene description for an AI image generator, specific to this article's topic (not generic)"
     }
   },
   required: [
@@ -87,8 +77,7 @@ export const RESPONSE_SCHEMA = {
     "seo_title",
     "body_urdu",
     "hashtags",
-    "facebook_post",
-    "image_prompt"
+    "facebook_post"
   ]
 };
 
@@ -112,46 +101,10 @@ function paragraphCount(text) {
 }
 
 /**
- * Build a topic-specific image prompt locally if the model returns something
- * too generic — still unique per article, never a hardcoded static URL/prompt.
- */
-export function buildTopicImagePrompt({ title, rawContent, category }) {
-  const topic = String(title || "world news event").trim().slice(0, 180);
-  const detail = String(rawContent || "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 220);
-  const cat = category || "news";
-
-  return [
-    `Editorial news photograph illustrating: ${topic}.`,
-    detail ? `Story context: ${detail}` : "",
-    `Category mood: ${cat}.`,
-    "Photorealistic, specific subjects and setting matching the story,",
-    "cinematic lighting, sharp detail, no text, no watermark, no logos,",
-    "16:9 composition suitable for a news article hero image.",
-    `Unique scene id: ${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-  ]
-    .filter(Boolean)
-    .join(" ");
-}
-
-const GENERIC_IMAGE_PROMPT_RE =
-  /^(news|breaking news|technology|tech news|ai concept|generic|stock photo|newspaper|world news)\b/i;
-
-function isGenericImagePrompt(prompt) {
-  const p = String(prompt || "").trim();
-  if (p.length < 40) return true;
-  if (GENERIC_IMAGE_PROMPT_RE.test(p)) return true;
-  // Too vague if it has almost no concrete nouns from a real scene.
-  const concrete = /(chip|phone|city|soldier|court|stadium|hospital|factory|satellite|car|protest|parliament|ceo|launch|flood|earthquake|election)/i;
-  return p.length < 80 && !concrete.test(p);
-}
-
-/**
  * Parse Gemini JSON into the bot's internal result shape (DB-compatible names).
+ * imagePrompt is always empty — images come from fetcher.resolveArticleImage().
  */
-export function parseAiResponse(aiText, sourceContext = {}) {
+export function parseAiResponse(aiText) {
   let parsed;
   try {
     parsed = JSON.parse(aiText);
@@ -159,27 +112,17 @@ export function parseAiResponse(aiText, sourceContext = {}) {
     throw new Error(`AI response was not valid JSON: ${error.message}`);
   }
 
-  // Prefer new schema keys; accept legacy camelCase if a model returns them.
   const titleUrdu = parsed.title_urdu ?? parsed.urduTitle ?? "";
   const bodyUrdu = parsed.body_urdu ?? parsed.article ?? "";
   const urduSummary = parsed.urdu_summary ?? parsed.urduSummary ?? "";
   const seoTitle = parsed.seo_title ?? parsed.seoTitle ?? "";
   const facebookPost = parsed.facebook_post ?? parsed.facebookPost ?? "";
-  let imagePrompt = parsed.image_prompt ?? parsed.imagePrompt ?? "";
 
   const hashtags = Array.isArray(parsed.hashtags)
     ? parsed.hashtags.filter((tag) => typeof tag === "string" && tag.trim())
     : [];
 
   const category = typeof parsed.category === "string" ? parsed.category.trim() : "";
-
-  if (!imagePrompt || isGenericImagePrompt(imagePrompt)) {
-    imagePrompt = buildTopicImagePrompt({
-      title: sourceContext.title,
-      rawContent: sourceContext.rawContent,
-      category
-    });
-  }
 
   return {
     category,
@@ -189,26 +132,23 @@ export function parseAiResponse(aiText, sourceContext = {}) {
     article: typeof bodyUrdu === "string" ? bodyUrdu.trim() : "",
     hashtags: hashtags.join(" "),
     facebookPost: typeof facebookPost === "string" ? facebookPost.trim() : "",
-    imagePrompt: typeof imagePrompt === "string" ? imagePrompt.trim() : ""
+    // Disabled — kept empty so older callers/DB columns stay safe.
+    imagePrompt: ""
   };
 }
 
 /**
- * Strict validation: Urdu script + full body length (+ image prompt present).
+ * Strict validation: Urdu script + full body length (no image requirements).
  */
 export function isValidAiResult(result) {
-  if (!result?.urduTitle || !result?.urduSummary || !result?.article || !result?.imagePrompt) {
+  if (!result?.urduTitle || !result?.urduSummary || !result?.article) {
     return false;
   }
   if (!looksLikeUrdu(result.urduTitle, 8)) return false;
   if (!looksLikeUrdu(result.urduSummary, 16)) return false;
   if (!looksLikeUrdu(result.article, 80)) return false;
   if (result.article.length < MIN_BODY_URDU_CHARS) return false;
-  // Prefer multi-paragraph bodies; allow single block if long enough (some models omit blank lines).
   if (paragraphCount(result.article) < 2 && result.article.length < MIN_BODY_URDU_CHARS + 150) {
-    return false;
-  }
-  if (isGenericImagePrompt(result.imagePrompt) && result.imagePrompt.length < 60) {
     return false;
   }
   return true;
@@ -228,7 +168,7 @@ ${sourceText || "(No long source text available — expand carefully from the he
 Remember:
 - title_urdu + body_urdu + urdu_summary MUST be Arabic-script Urdu only.
 - body_urdu = full article (3–4 paragraphs), NOT a short blurb.
-- image_prompt = unique detailed ENGLISH visual scene for THIS story only.`;
+- Do not invent image prompts or image URLs.`;
 }
 
 async function callGemini(item) {
@@ -253,7 +193,6 @@ async function callGemini(item) {
       generationConfig: {
         responseMimeType: "application/json",
         responseSchema: RESPONSE_SCHEMA,
-        // Allow long Urdu bodies; default caps often truncate articles.
         maxOutputTokens: 4096
       }
     })
@@ -286,7 +225,7 @@ async function callGemini(item) {
 }
 
 /**
- * Analyze one news item (title + raw source text) into Urdu content + image prompt.
+ * Analyze one news item into Urdu content (no image generation).
  *
  * @param {{ title: string, rawContent?: string, description?: string }} item
  * @param {(level: string, message: string, meta?: object) => void} [log]
@@ -301,7 +240,7 @@ export async function analyzeNews(item, log = () => {}) {
   for (let attempt = 1; attempt <= AI_MAX_RETRIES + 1; attempt++) {
     try {
       const aiText = await callGemini(item);
-      const result = parseAiResponse(aiText, item);
+      const result = parseAiResponse(aiText);
 
       if (isValidAiResult(result)) {
         return result;

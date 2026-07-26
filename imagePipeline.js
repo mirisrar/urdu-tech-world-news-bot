@@ -1,29 +1,17 @@
 /**
- * Image pipeline (Phase 5): downloads the AI-generated image, optimizes
- * it, and uploads it to Supabase Storage so articles have a stable,
- * permanently-hosted image instead of relying on Pollinations.ai's
- * on-the-fly generation URL (which has no uptime/permanence guarantee).
+ * Image pipeline — ORIGINAL article images only (no AI / Pollinations).
  *
- * Falls back gracefully at every stage — a failure here should never
- * break the overall item processing, since the article itself is more
- * important than its image:
- *   1. Try: download from Pollinations.ai -> optimize with sharp ->
- *      upload to Supabase Storage -> return the permanent public URL.
- *   2. Fall back to the raw Pollinations.ai URL (same as pre-Phase-5
- *      behavior) if storage upload fails (e.g. the bucket doesn't exist
- *      yet — see DATABASE_SCHEMA.md for the required setup).
- *   3. Fall back to DEFAULT_FALLBACK_IMAGE_URL (if configured) if even
- *      generating/downloading the image fails outright.
- *   4. Fall back to no image at all (empty string) as a last resort.
+ * Flow:
+ *   1. Caller (index.js) resolves the source image via fetcher.resolveArticleImage()
+ *      (RSS media / enclosure / og:image / twitter:image / placeholder).
+ *   2. Optionally download that real image, optimize with sharp, upload to
+ *      Supabase Storage for a stable public URL.
+ *   3. On any failure, keep the original remote URL (or placeholder).
  */
 
 import sharp from "sharp";
+import { DEFAULT_NEWS_PLACEHOLDER_IMAGE, normalizeImageUrl } from "./fetcher.js";
 
-const POLLINATIONS_BASE_URL = "https://image.pollinations.ai/prompt";
-
-// Facebook/Open Graph's recommended link-preview size — also a
-// reasonable general-purpose "article image" size for the website and
-// most social platforms (they each re-crop as needed on their end).
 const OUTPUT_WIDTH = 1200;
 const OUTPUT_HEIGHT = 630;
 const OUTPUT_FORMAT = "webp";
@@ -31,49 +19,31 @@ const OUTPUT_QUALITY = 80;
 
 const STORAGE_BUCKET = process.env.SUPABASE_STORAGE_BUCKET || "news-images";
 
-/**
- * Stable-ish numeric seed from prompt + slug so each article gets a
- * distinct Pollinations render (avoids cache collisions / identical images).
- */
-function seedFrom(imagePrompt, slugSource) {
-  const raw = `${imagePrompt || ""}|${slugSource || ""}|${Date.now()}`;
-  let hash = 0;
-  for (let i = 0; i < raw.length; i++) {
-    hash = (hash * 31 + raw.charCodeAt(i)) >>> 0;
-  }
-  return hash % 1_000_000_000;
-}
-
-/**
- * Build a unique Pollinations URL. Always passes the per-article prompt
- * (never a hardcoded static prompt). `seed` + `nologo` reduce identical
- * cached generics across stories.
- */
-export function buildPollinationsUrl(imagePrompt, slugSource = "") {
-  const prompt = String(imagePrompt || "").trim();
-  if (!prompt) {
-    throw new Error("buildPollinationsUrl: imagePrompt is required (no static prompt fallback)");
-  }
-  const url = new URL(`${POLLINATIONS_BASE_URL}/${encodeURIComponent(prompt)}`);
-  url.searchParams.set("width", String(OUTPUT_WIDTH));
-  url.searchParams.set("height", String(OUTPUT_HEIGHT));
-  url.searchParams.set("nologo", "true");
-  url.searchParams.set("seed", String(seedFrom(prompt, slugSource)));
-  return url.toString();
-}
-
 function slugify(text, maxLength = 60) {
-  return (text || "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, maxLength) || "image";
+  return (
+    (text || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, maxLength) || "image"
+  );
 }
 
 async function downloadImage(url) {
-  const response = await fetch(url);
+  const response = await fetch(url, {
+    redirect: "follow",
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (compatible; NexoraNewsBot/1.0; +https://github.com/mirisrar/urdu-tech-world-news-bot)",
+      Accept: "image/*,*/*;q=0.8"
+    }
+  });
   if (!response.ok) {
     throw new Error(`Image download returned HTTP ${response.status}`);
+  }
+  const contentType = response.headers.get("content-type") || "";
+  if (contentType && !/^image\//i.test(contentType) && !/octet-stream/i.test(contentType)) {
+    throw new Error(`URL did not return an image (content-type: ${contentType})`);
   }
   const arrayBuffer = await response.arrayBuffer();
   return Buffer.from(arrayBuffer);
@@ -89,12 +59,10 @@ async function optimizeImage(inputBuffer) {
 async function uploadToStorage(supabase, buffer, slug) {
   const path = `${new Date().toISOString().slice(0, 10)}/${Date.now()}-${slug}.${OUTPUT_FORMAT}`;
 
-  const { error: uploadError } = await supabase.storage
-    .from(STORAGE_BUCKET)
-    .upload(path, buffer, {
-      contentType: `image/${OUTPUT_FORMAT}`,
-      upsert: false
-    });
+  const { error: uploadError } = await supabase.storage.from(STORAGE_BUCKET).upload(path, buffer, {
+    contentType: `image/${OUTPUT_FORMAT}`,
+    upsert: false
+  });
 
   if (uploadError) {
     throw new Error(`Supabase Storage upload failed: ${uploadError.message}`);
@@ -109,51 +77,41 @@ async function uploadToStorage(supabase, buffer, slug) {
 }
 
 /**
- * Produces a permanent, optimized image URL for an article, or the best
- * available fallback if any stage fails.
+ * Persist an already-resolved *original* article image URL.
+ * Never generates images. Never calls Pollinations / AI image APIs.
  *
- * @param {object} supabase - An initialized Supabase client (needs Storage access).
- * @param {string} imagePrompt - The AI-generated image prompt.
- * @param {string} slugSource - Text to derive a filename slug from (e.g. the article title).
- * @param {(level: string, message: string, meta?: object) => void} log - Logger function (see index.js).
- * @returns {Promise<string>} A usable image URL — permanent if everything succeeded, best-effort otherwise. Empty string only if imagePrompt itself is empty.
+ * @param {object} supabase
+ * @param {string} originalImageUrl - From fetcher.resolveArticleImage()
+ * @param {string} slugSource
+ * @param {(level: string, message: string, meta?: object) => void} log
+ * @returns {Promise<string>}
  */
-export async function getArticleImageUrl(supabase, imagePrompt, slugSource, log) {
-  // Never substitute a hardcoded/static prompt — caller (ai_agent) must
-  // supply a topic-specific prompt. Empty prompt → no image (not a generic).
-  if (!imagePrompt || !String(imagePrompt).trim()) {
-    log("warn", "No topic-specific imagePrompt — skipping image (no static fallback prompt)");
-    return "";
-  }
+export async function storeOriginalArticleImage(supabase, originalImageUrl, slugSource, log) {
+  const sourceUrl = normalizeImageUrl(originalImageUrl) || DEFAULT_NEWS_PLACEHOLDER_IMAGE;
 
-  let pollinationsUrl;
-  try {
-    pollinationsUrl = buildPollinationsUrl(imagePrompt, slugSource);
-  } catch (error) {
-    log("warn", "Could not build image URL", { message: error.message });
-    return "";
+  // Skip re-hosting the shared placeholder — just return it.
+  if (sourceUrl === DEFAULT_NEWS_PLACEHOLDER_IMAGE) {
+    return sourceUrl;
   }
 
   let rawImage;
   try {
-    rawImage = await downloadImage(pollinationsUrl);
+    rawImage = await downloadImage(sourceUrl);
   } catch (error) {
-    // Prefer the unique on-the-fly URL over a shared DEFAULT_FALLBACK image
-    // so articles don't all show the same generic picture.
-    log("warn", "Failed to download generated image — using unique Pollinations URL", {
+    log("warn", "Failed to download original article image — using source URL as-is", {
       message: error.message
     });
-    return pollinationsUrl;
+    return sourceUrl;
   }
 
   let optimized;
   try {
     optimized = await optimizeImage(rawImage);
   } catch (error) {
-    log("warn", "Failed to optimize image — using unoptimized Pollinations URL", {
+    log("warn", "Failed to optimize original image — using source URL as-is", {
       message: error.message
     });
-    return pollinationsUrl;
+    return sourceUrl;
   }
 
   try {
@@ -161,10 +119,18 @@ export async function getArticleImageUrl(supabase, imagePrompt, slugSource, log)
   } catch (error) {
     log(
       "warn",
-      "Failed to upload image to Supabase Storage — using on-the-fly Pollinations URL instead. " +
-        `Create a public '${STORAGE_BUCKET}' bucket in Supabase to enable permanent image storage (see DATABASE_SCHEMA.md).`,
+      "Failed to upload original image to Supabase Storage — using original remote URL. " +
+        `Create a public '${STORAGE_BUCKET}' bucket to enable permanent storage.`,
       { message: error.message }
     );
-    return pollinationsUrl;
+    return sourceUrl;
   }
+}
+
+/**
+ * @deprecated Use storeOriginalArticleImage + fetcher.resolveArticleImage.
+ * Kept as a thin alias so older imports don't break mid-refactor.
+ */
+export async function getArticleImageUrl(supabase, originalImageUrl, slugSource, log) {
+  return storeOriginalArticleImage(supabase, originalImageUrl, slugSource, log);
 }

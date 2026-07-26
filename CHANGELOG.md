@@ -4,6 +4,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). Versions abhi 
 
 ## [Unreleased]
 
+### Changed (original article images — AI images disabled)
+- Disabled Pollinations / AI `image_prompt` generation in `ai_agent.js` (prompt v4).
+- `fetcher.js` now extracts real images from RSS (`media:content`, `media:thumbnail`, `enclosure`, inline `<img>`) and from the article page (`og:image`, `twitter:image`).
+- `imagePipeline.js` only re-hosts the original URL (optional Storage upload); placeholder used only when no original image exists.
+
 ### Changed (faster posting cadence)
 - GitHub Actions cron: hourly → **every 10 minutes** (`*/10 * * * *`), with concurrency lock so runs don’t overlap.
 - Higher defaults: `MAX_ITEMS_PER_SOURCE=25`, `MAX_ITEMS_PER_RUN=40` (env-tunable).
