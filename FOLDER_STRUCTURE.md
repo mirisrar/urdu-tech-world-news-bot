@@ -73,12 +73,8 @@ urdu-tech-world-news-bot/
 │   │
 │   └── run.js                    # Main entrypoint, replaces current index.js
 │
-├── website-integration/            # ✅ Done (Phase 6) — already exists at repo root (see current structure above); no webhook publisher needed, direct Supabase read was the chosen approach
-│
-├── monitoring/
-│   └── runAlert.js               # Phase 8 — Telegram end-of-run health alert
-├── (Admin CMS + Analytics live in the website repo under admin/ — Phase 7/8 done)
-│   └── ...
+├── website-integration/            # ✅ Done (Phase 6)
+├── monitoring/                     # ✅ Done (Phase 8) — runAlert.js at repo root
 │
 ├── tests/
 │   ├── ai/
@@ -97,7 +93,7 @@ urdu-tech-world-news-bot/
 
 - This restructuring is **not required for Phase 1** (bug fixes can land in `index.js` as-is). It becomes worthwhile starting **Phase 2/3**, when multiple sources and a dedicated AI module justify separate files.
 - Migrate incrementally — extract one concern at a time (e.g. `db/news.repository.js` first, since it's the simplest, well-bounded piece), rather than a single big-bang rewrite.
-- Nexora News Urdu (the website) is an **existing, already-deployed site external to this repo** — no `website/` folder is needed here; `website-integration/` holds code meant to be copied *into* that separate repo. Admin CMS already lives in the website repo under `admin/` (Phase 7 done).
+- Nexora News Urdu (the website) is an **existing, already-deployed site external to this repo** — no `website/` folder is needed here; `website-integration/` holds code meant to be copied *into* that separate repo. Admin CMS + Analytics already live in the website repo under `admin/` (Phases 7–8 done).
 
 ## Root-Level Documentation Files (current)
 
