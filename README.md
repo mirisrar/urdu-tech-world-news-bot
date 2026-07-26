@@ -24,10 +24,10 @@ node index.js
 | [`DATABASE_SCHEMA.md`](./DATABASE_SCHEMA.md) | Supabase `news` table schema |
 | [`API_DOCUMENTATION.md`](./API_DOCUMENTATION.md) | External APIs used + planned internal API |
 | [`FOLDER_STRUCTURE.md`](./FOLDER_STRUCTURE.md) | Current vs. target folder structure |
-| [`UI_UX_GUIDELINES.md`](./UI_UX_GUIDELINES.md) | Website/dashboard design guidelines (future) |
+| [`UI_UX_GUIDELINES.md`](./UI_UX_GUIDELINES.md) | Website/Admin design guidelines |
 | [`CODING_STANDARDS.md`](./CODING_STANDARDS.md) | JS/Node style guide |
 | [`DEVELOPMENT_WORKFLOW.md`](./DEVELOPMENT_WORKFLOW.md) | Branching, PR process, CI |
-| [`DEPLOYMENT_GUIDE.md`](./DEPLOYMENT_GUIDE.md) | Deployment steps (bot, future website/dashboard) |
+| [`DEPLOYMENT_GUIDE.md`](./DEPLOYMENT_GUIDE.md) | Deployment steps (bot, website, Admin RLS/schema) |
 | [`TESTING_GUIDE.md`](./TESTING_GUIDE.md) | Testing strategy (currently no tests — plan included) |
 | [`SECURITY_GUIDELINES.md`](./SECURITY_GUIDELINES.md) | Secrets, DB security, AI content risks |
 | [`CHANGELOG.md`](./CHANGELOG.md) | Change history |
@@ -35,4 +35,4 @@ node index.js
 
 ## Current Status
 
-See [`PROJECT_OVERVIEW.md`](./PROJECT_OVERVIEW.md#current-status-jaisa-project_roadmapmd-mein-detail-hai) for a full status table. In short: RSS collection, AI processing, and database storage work for a single source/item; multi-source collection, publishing (website/social), image storage, admin dashboard, and monitoring are planned per [`PROJECT_ROADMAP.md`](./PROJECT_ROADMAP.md).
+See [`PROJECT_OVERVIEW.md`](./PROJECT_OVERVIEW.md#current-status-jaisa-project_roadmapmd-mein-detail-hai) for a full status table. In short: Phases 0–8 are done (~97%) — collection, Gemini AI, social publishing, image pipeline, website integration, Nexora Admin CMS, content analytics, and Telegram bot run alerts. Next: Phase 9 scale.

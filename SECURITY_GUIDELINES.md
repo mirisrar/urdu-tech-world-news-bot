@@ -15,11 +15,12 @@ The current `index.js` previously logged `GROQ_API_KEY?.length` and dumped the f
 
 **This is no longer a "someday" concern — it's active as of Phase 6.** The website (Nexora News Urdu) reads `news` directly from the browser using the Supabase JS SDK + `SUPABASE_ANON_KEY`, which makes that key **effectively public** (visible to any visitor via browser dev tools/network tab).
 
-- **Row Level Security MUST restrict the `anon` role to read-only** on `news` — see `website-integration/database/rls-policy.sql` / `DATABASE_SCHEMA.md` for the exact policy. Without this, anyone could use the (now-public) anon key to insert/update/delete rows from their browser console.
-- **The bot itself must use `SUPABASE_SERVICE_ROLE_KEY`** (bypasses RLS entirely) for its own writes, not the anon key — `index.js` already prefers this key (with an anon-key fallback + warning for anyone who hasn't migrated). `SUPABASE_SERVICE_ROLE_KEY` must **only** ever live in server-side secrets (GitHub Actions) — **never** in the website's code, `config.js`, or any client-side/browser context.
-- **Setup order matters**: add `SUPABASE_SERVICE_ROLE_KEY` as a GitHub Actions secret *before* applying the read-only RLS policy — otherwise the bot's writes will start failing (using the now-restricted anon key) before it has the replacement credential.
-- Add a **unique constraint on `url`** at the DB level (defense in depth beyond application-level duplicate checks — see `DATABASE_SCHEMA.md`).
-- **Storage bucket (Phase 5)**: the `news-images` (or configured `SUPABASE_STORAGE_BUCKET`) bucket must be **public for reads** (so image URLs work in Facebook/Telegram/website previews) but should have a scoped **insert/upload policy** — only the bot's key needs upload permission, not arbitrary public writes. Review the bucket's storage policies in the Supabase dashboard; don't leave it open to public writes just because reads need to be public.
+- **Row Level Security MUST restrict the `anon` role to read-only** on `news` — see `website-integration/database/rls-policy.sql` / `DATABASE_SCHEMA.md`. Without this, anyone could use the (now-public) anon key to insert/update/delete rows from their browser console.
+- **Admin CMS writes use the `authenticated` role** (Supabase Auth session) — RLS grants SELECT/INSERT/UPDATE/DELETE on `news` and upload on `news-images` to `authenticated` only. Admin login **must** establish a real Supabase Auth JWT; a custom localStorage password gate that still talks to Supabase with the bare anon key will lose write access after these policies are applied.
+- **The bot itself must use `SUPABASE_SERVICE_ROLE_KEY`** (bypasses RLS entirely) for its own writes, not the anon key — `index.js` already prefers this key (with an anon-key fallback + warning for anyone who hasn't migrated). `SUPABASE_SERVICE_ROLE_KEY` must **only** ever live in server-side secrets (GitHub Actions) — **never** in the website's code, Admin `config.js`, or any client-side/browser context.
+- **Setup order matters**: (1) `SUPABASE_SERVICE_ROLE_KEY` in GitHub Actions, (2) Admin on Supabase Auth, (3) `schema-align.sql`, (4) `rls-policy.sql`. Applying anon-read-only RLS before the service-role secret breaks the bot; applying it before Admin Auth breaks Admin edit/save/delete.
+- Add a **partial unique index on `url`** (`WHERE url IS NOT NULL`) — see `schema-align.sql`. Admin manual posts may leave `url` null; bot RSS items always set it.
+- **Storage bucket (`news-images`)**: public **reads**; **writes** only via `authenticated` (Admin) or `service_role` (bot). Do not leave the bucket open to public/anon uploads.
 
 ## 3. Third-Party API Keys (Phase 4 — done)
 
@@ -52,13 +53,14 @@ Facebook/Telegram/X/WhatsApp are now wired in (`publishers/`). Guidelines to fol
 - Be cautious with `workflow_dispatch` — since manual runs bypass schedule, ensure only trusted collaborators have write access to trigger it in a way that could spend API quota or spam publish (relevant once Phase 4 auto-publishing exists).
 - Pin action versions (e.g. `actions/checkout@v4`) rather than using `@master`/`@latest`, to avoid unexpected behavior from upstream action changes.
 
-## 7. Future Auth (Phase 7 — Admin Dashboard)
+## 7. Admin Auth (Phase 7 — Nexora CMS, done)
 
-- Use Supabase Auth (or equivalent) rather than building custom auth from scratch.
-- Enforce role-based access (admin vs. viewer) if multiple people will use the dashboard.
-- Rate-limit/lock sensitive actions (e.g. bulk delete, source management) behind confirmation + audit logging.
+- Admin UI already exists on the website (`admin/dashboard.html`, `news.html`, `add-news.html`).
+- **Required**: Supabase Auth for Admin sessions so RLS `authenticated` policies apply. Do not put `service_role` in the browser.
+- Create at least one Auth user in Supabase dashboard for Admin login.
+- Optional later: role-based access (admin vs. viewer), audit logging, confirmation already exists on delete in `news.js`.
 
 ## 8. Incident Response (Basic Plan)
 
 - If a key is leaked: rotate immediately (Supabase/Google AI Studio/social platform dashboards), then invalidate the old key.
-- If bad content gets published: have a documented manual "unpublish" path (even if just a direct DB update initially, until Phase 7 dashboard exists) to remove it from website/social channels quickly.
+- If bad content gets published: use Admin CMS → News → Delete (or Edit), or a direct DB update as fallback.
