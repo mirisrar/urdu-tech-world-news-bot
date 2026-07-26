@@ -10,6 +10,8 @@ import {
   resolveArticleImage
 } from "./fetcher.js";
 import { analyzeNews, PROMPT_VERSION } from "./ai_agent.js";
+import { matchesAnyTitle, normalizeTitle } from "./dedupe.js";
+import { retryPendingPublishes } from "./publishRetry.js";
 
 // Phase 6: the website (Nexora News Urdu) now reads the `news` table
 // directly from the browser using the Supabase JS SDK + SUPABASE_ANON_KEY.
@@ -91,6 +93,14 @@ const MAX_ITEMS_PER_RUN = envInt("MAX_ITEMS_PER_RUN", 40);
 // Minimum delay between AI calls (rate-limit cushion).
 const AI_CALL_SPACING_MS = envInt("AI_CALL_SPACING_MS", 1000);
 
+// Phase 9 — title-similarity dedupe window + publish retry batch size.
+const TITLE_DEDUPE_LOOKBACK = envInt("TITLE_DEDUPE_LOOKBACK", 200);
+const PUBLISH_RETRY_LIMIT = envInt("PUBLISH_RETRY_LIMIT", 10);
+const PUBLISH_RETRY_LOOKBACK_HOURS = envInt("PUBLISH_RETRY_LOOKBACK_HOURS", 48);
+const TITLE_SIMILARITY_THRESHOLD = Number.parseFloat(
+  process.env.TITLE_SIMILARITY_THRESHOLD || "0.72"
+);
+
 function log(level, message, meta) {
   const line = `[${level.toUpperCase()}] ${message}`;
   if (meta !== undefined) {
@@ -116,6 +126,32 @@ async function isDuplicate(url) {
   }
 
   return Boolean(data && data.length > 0);
+}
+
+/**
+ * Recent headlines from DB for near-duplicate title checks (Phase 9).
+ * Fail-soft: returns [] if the query fails.
+ */
+async function loadRecentTitles() {
+  const { data, error } = await supabase
+    .from("news")
+    .select("title, urdu_title")
+    .order("id", { ascending: false })
+    .limit(TITLE_DEDUPE_LOOKBACK);
+
+  if (error) {
+    log("warn", "Could not load recent titles for similarity dedupe", {
+      message: error.message
+    });
+    return [];
+  }
+
+  const titles = [];
+  for (const row of data || []) {
+    if (row.title) titles.push(row.title);
+    if (row.urdu_title) titles.push(row.urdu_title);
+  }
+  return titles;
 }
 
 function buildNewsRow(item, sourceName, aiResult, imageUrl) {
@@ -322,34 +358,42 @@ async function processItem(item, sourceName) {
 }
 
 /**
- * Fetches every configured RSS source independently and collects their items
- * with full/raw content extracted (fetcher.js) for the AI agent.
+ * Fetches every configured RSS source in parallel (Phase 9) and collects
+ * items with full/raw content extracted (fetcher.js) for the AI agent.
+ * One failing source never blocks the others (Promise.allSettled).
  */
 async function collectRssItems() {
-  const collected = [];
-
-  for (const source of SOURCES) {
-    try {
+  const settled = await Promise.allSettled(
+    SOURCES.map(async (source) => {
       const { items } = await fetchRssFeed(source.url, MAX_ITEMS_PER_SOURCE, {
         googleNews: Boolean(source.googleNews)
       });
-      log("info", `Fetched ${items.length} items from ${source.name}`, {
-        withContent: items.filter((i) => (i.rawContent || "").length >= 80).length
+      return { source, items };
+    })
+  );
+
+  const collected = [];
+
+  for (const result of settled) {
+    if (result.status === "rejected") {
+      log("error", "Failed to fetch an RSS source", {
+        message: result.reason?.message || String(result.reason)
       });
-      for (const item of items) {
-        // Prefer the publisher Google News embeds in the title (Dawn, Geo, …)
-        // so the DB `source` column reflects the real outlet, not just the aggregator.
-        const sourceName = item.publisher
-          ? `${source.name} / ${item.publisher}`
-          : source.name;
-        collected.push({ item, sourceName });
-      }
-    } catch (error) {
-      log("error", `Failed to fetch feed for ${source.name}`, {
-        url: source.url,
-        message: error.message
-      });
-      // Fail-soft: continue with the next source instead of aborting the run.
+      continue;
+    }
+
+    const { source, items } = result.value;
+    log("info", `Fetched ${items.length} items from ${source.name}`, {
+      withContent: items.filter((i) => (i.rawContent || "").length >= 80).length
+    });
+
+    for (const item of items) {
+      // Prefer the publisher Google News embeds in the title (Dawn, Geo, …)
+      // so the DB `source` column reflects the real outlet, not just the aggregator.
+      const sourceName = item.publisher
+        ? `${source.name} / ${item.publisher}`
+        : source.name;
+      collected.push({ item, sourceName });
     }
   }
 
@@ -389,18 +433,21 @@ async function collectNewsApiItems() {
 }
 
 /**
- * Collect from all sources, then keep only *new* URLs (not already in DB)
- * up to MAX_ITEMS_PER_RUN. This way every 10-minute run posts as many new
- * stories as exist (within the safety cap), instead of wasting the cap on
- * duplicates from BBC/etc.
+ * Collect from all sources, then keep only *new* items up to MAX_ITEMS_PER_RUN:
+ *  1) URL not already in DB
+ *  2) Title not near-duplicate of a recent DB/in-batch headline (Phase 9)
  */
 async function collectItems() {
   const rssItems = await collectRssItems();
   const newsApiItems = await collectNewsApiItems();
   const candidates = [...rssItems, ...newsApiItems];
 
+  const recentTitles = await loadRecentTitles();
+  const batchTitles = [];
+
   const fresh = [];
   let alreadyKnown = 0;
+  let similarTitle = 0;
 
   for (const entry of candidates) {
     if (!entry.item?.link || !entry.item?.title) continue;
@@ -411,12 +458,29 @@ async function collectItems() {
         continue;
       }
     } catch (error) {
-      // If dedupe check fails, still try to process (saveNews/processItem will surface errors).
       log("warn", "Duplicate check failed — keeping item as candidate", {
         url: entry.item.link,
         message: error.message
       });
     }
+
+    const threshold = Number.isFinite(TITLE_SIMILARITY_THRESHOLD)
+      ? TITLE_SIMILARITY_THRESHOLD
+      : 0.72;
+
+    if (
+      matchesAnyTitle(entry.item.title, recentTitles, threshold) ||
+      matchesAnyTitle(entry.item.title, batchTitles, threshold)
+    ) {
+      similarTitle++;
+      log("info", "Skipping near-duplicate title", {
+        title: entry.item.title,
+        normalized: normalizeTitle(entry.item.title).slice(0, 80)
+      });
+      continue;
+    }
+
+    batchTitles.push(entry.item.title);
     fresh.push(entry);
     if (fresh.length >= MAX_ITEMS_PER_RUN) break;
   }
@@ -424,6 +488,7 @@ async function collectItems() {
   log("info", "Fresh items after dedupe", {
     fetched: candidates.length,
     alreadyKnown,
+    similarTitle,
     fresh: fresh.length,
     cap: MAX_ITEMS_PER_RUN
   });
@@ -475,6 +540,17 @@ async function run() {
     }
   }
 
+  // Phase 9: DB-backed retry for recent rows missing social posts.
+  let publishRetry = { attempted: 0, publishedAny: 0, skipped: 0 };
+  try {
+    publishRetry = await retryPendingPublishes(supabase, updatePublishStatus, log, {
+      limit: PUBLISH_RETRY_LIMIT,
+      lookbackHours: PUBLISH_RETRY_LOOKBACK_HOURS
+    });
+  } catch (error) {
+    log("warn", "Publish retry step failed", { message: error.message });
+  }
+
   const summary = {
     processed,
     skipped,
@@ -483,7 +559,9 @@ async function run() {
     sources: activeSourceCount,
     errors,
     status: failed > 0 ? "degraded" : "ok",
-    durationMs: Date.now() - startedAt
+    durationMs: Date.now() - startedAt,
+    publishRetryAttempted: publishRetry.attempted,
+    publishRetryOk: publishRetry.publishedAny
   };
 
   log("info", "Run complete", {
@@ -492,7 +570,8 @@ async function run() {
     failed,
     total: candidates.length,
     sources: activeSourceCount,
-    durationMs: summary.durationMs
+    durationMs: summary.durationMs,
+    publishRetry
   });
 
   // Phase 8: Telegram health alert (fail-soft — never breaks the run).
