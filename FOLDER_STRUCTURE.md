@@ -25,9 +25,11 @@ urdu-tech-world-news-bot/
 │   ├── database/schema-align.sql
 │   ├── examples/
 │   └── README.md
+├── fetcher.js                 # RSS/NewsAPI content extraction (raw text for AI)
+├── ai_agent.js                # Gemini Urdu package + image_prompt (prompt v3)
 ├── newsapi.js
 ├── imagePipeline.js
-├── index.js                   # Collector + dedupe + AI + image + DB + publish + run alert
+├── index.js                   # Orchestration: collect → dedupe → AI → image → DB → publish → alert
 ├── package.json
 ├── README.md
 └── (documentation files — this set)
