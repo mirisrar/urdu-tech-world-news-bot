@@ -4,6 +4,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). Versions abhi 
 
 ## [Unreleased]
 
+### Fixed (Urdu content quality + unique images)
+- New `fetcher.js`: extracts richest RSS/NewsAPI source text (`content:encoded` → content → summary/description) so the AI is not headline-only.
+- New `ai_agent.js` (prompt v3): strict Urdu system instruction, schema keys `title_urdu` / `body_urdu` / `image_prompt`, min-length + Arabic-script validation, rejects English/short bodies.
+- Topic-specific `image_prompt` required; generic prompts auto-replaced with a per-article detailed prompt (never a hardcoded static prompt).
+- `imagePipeline.js`: unique Pollinations `seed` per article; no shared static image-prompt fallback.
+
 ### Added (Phase 8 — Monitoring & Analytics)
 - Confirmed existing **Nexora CMS Analytics** (`analytics.html` / `analytics.js`) — views, charts, category breakdown, publishing report, CSV export — no rebuild in this bot repo.
 - New `monitoring/runAlert.js`: end-of-run Telegram health alert (processed/skipped/failed/duration + error snippets). Wired into `index.js` after every run and on fatal failure. Fail-soft; optional `TELEGRAM_ALERT_CHAT_ID` + `TELEGRAM_ALERT_MODE` (`always`|`failures`|`off`).

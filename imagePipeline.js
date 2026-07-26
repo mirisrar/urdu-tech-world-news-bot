@@ -31,8 +31,35 @@ const OUTPUT_QUALITY = 80;
 
 const STORAGE_BUCKET = process.env.SUPABASE_STORAGE_BUCKET || "news-images";
 
-function buildPollinationsUrl(imagePrompt) {
-  return `${POLLINATIONS_BASE_URL}/${encodeURIComponent(imagePrompt)}`;
+/**
+ * Stable-ish numeric seed from prompt + slug so each article gets a
+ * distinct Pollinations render (avoids cache collisions / identical images).
+ */
+function seedFrom(imagePrompt, slugSource) {
+  const raw = `${imagePrompt || ""}|${slugSource || ""}|${Date.now()}`;
+  let hash = 0;
+  for (let i = 0; i < raw.length; i++) {
+    hash = (hash * 31 + raw.charCodeAt(i)) >>> 0;
+  }
+  return hash % 1_000_000_000;
+}
+
+/**
+ * Build a unique Pollinations URL. Always passes the per-article prompt
+ * (never a hardcoded static prompt). `seed` + `nologo` reduce identical
+ * cached generics across stories.
+ */
+export function buildPollinationsUrl(imagePrompt, slugSource = "") {
+  const prompt = String(imagePrompt || "").trim();
+  if (!prompt) {
+    throw new Error("buildPollinationsUrl: imagePrompt is required (no static prompt fallback)");
+  }
+  const url = new URL(`${POLLINATIONS_BASE_URL}/${encodeURIComponent(prompt)}`);
+  url.searchParams.set("width", String(OUTPUT_WIDTH));
+  url.searchParams.set("height", String(OUTPUT_HEIGHT));
+  url.searchParams.set("nologo", "true");
+  url.searchParams.set("seed", String(seedFrom(prompt, slugSource)));
+  return url.toString();
 }
 
 function slugify(text, maxLength = 60) {
@@ -92,18 +119,31 @@ async function uploadToStorage(supabase, buffer, slug) {
  * @returns {Promise<string>} A usable image URL — permanent if everything succeeded, best-effort otherwise. Empty string only if imagePrompt itself is empty.
  */
 export async function getArticleImageUrl(supabase, imagePrompt, slugSource, log) {
-  if (!imagePrompt) {
-    return process.env.DEFAULT_FALLBACK_IMAGE_URL || "";
+  // Never substitute a hardcoded/static prompt — caller (ai_agent) must
+  // supply a topic-specific prompt. Empty prompt → no image (not a generic).
+  if (!imagePrompt || !String(imagePrompt).trim()) {
+    log("warn", "No topic-specific imagePrompt — skipping image (no static fallback prompt)");
+    return "";
   }
 
-  const pollinationsUrl = buildPollinationsUrl(imagePrompt);
+  let pollinationsUrl;
+  try {
+    pollinationsUrl = buildPollinationsUrl(imagePrompt, slugSource);
+  } catch (error) {
+    log("warn", "Could not build image URL", { message: error.message });
+    return "";
+  }
 
   let rawImage;
   try {
     rawImage = await downloadImage(pollinationsUrl);
   } catch (error) {
-    log("warn", "Failed to download generated image — using fallback", { message: error.message });
-    return process.env.DEFAULT_FALLBACK_IMAGE_URL || pollinationsUrl;
+    // Prefer the unique on-the-fly URL over a shared DEFAULT_FALLBACK image
+    // so articles don't all show the same generic picture.
+    log("warn", "Failed to download generated image — using unique Pollinations URL", {
+      message: error.message
+    });
+    return pollinationsUrl;
   }
 
   let optimized;

@@ -85,6 +85,9 @@ export async function fetchNewsFromNewsApi(query, options = {}) {
   return data.articles.map((article) => ({
     title: article.title ?? "",
     description: article.description ?? "",
+    // Full-ish body when NewsAPI provides it (often truncated with "[+N chars]").
+    // fetcher.normalizeNewsApiArticle() prefers this over description for AI context.
+    content: article.content ?? "",
     url: article.url ?? "",
     urlToImage: article.urlToImage ?? ""
   }));

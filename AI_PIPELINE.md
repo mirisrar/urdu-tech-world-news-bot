@@ -33,7 +33,7 @@ Since this is a genuine provider switch (not just a config tweak), a few Gemini-
 
 ## Current Prompt & Output Format (Phase 3 — structured JSON, implemented in PR #5)
 
-**Prompt** (`PROMPT_VERSION = 2` in `index.js`):
+**Prompt** (`PROMPT_VERSION = 3` (see `ai_agent.js`) in `index.js`):
 
 ```
 You are a professional Urdu news editor. Analyze the following English news headline and produce Urdu content for a news platform, following the response schema exactly.
