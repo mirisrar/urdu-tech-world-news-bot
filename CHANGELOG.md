@@ -4,6 +4,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). Versions abhi 
 
 ## [Unreleased]
 
+### Changed (faster posting cadence)
+- GitHub Actions cron: hourly → **every 10 minutes** (`*/10 * * * *`), with concurrency lock so runs don’t overlap.
+- Higher defaults: `MAX_ITEMS_PER_SOURCE=25`, `MAX_ITEMS_PER_RUN=40` (env-tunable).
+- Collector now **dedupes first**, then processes every *new* story up to the cap (so the run isn’t wasted on already-saved BBC items).
+
 ### Fixed (local Pakistan coverage)
 - Added Google News Pakistan RSS first in `SOURCES`: `hl=en-PK&gl=PK&ceid=PK:en` and Urdu `hl=ur&gl=PK&ceid=PK:ur` (verified live; geo/PK section feed is unavailable).
 - Parse Google “Headline - Publisher” titles so DB `source` stores the real outlet (Dawn, Radio Pakistan, etc.).

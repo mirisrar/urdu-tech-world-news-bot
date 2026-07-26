@@ -68,15 +68,23 @@ const SOURCES = [
 // configured a NewsAPI key yet.
 const NEWS_API_QUERIES = ["technology"];
 
-// How many fresh (non-duplicate) items to consider per source...
-const MAX_ITEMS_PER_SOURCE = 3;
-// ...and an overall safety cap across all sources combined per run, so
-// adding more sources later can't silently explode AI/API usage in one run.
-const MAX_ITEMS_PER_RUN = 10;
+// Tunable via env (see .env.example / news.yml). Defaults are sized for a
+// ~10-minute schedule: pull plenty from each feed, then process every *new*
+// (non-duplicate) item up to a safety cap so Gemini/API cost can't explode.
+function envInt(name, fallback) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return fallback;
+  const n = Number.parseInt(String(raw), 10);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
 
-// Minimum delay between AI calls, so processing several items across
-// several sources doesn't burst past Gemini's per-minute rate limits.
-const AI_CALL_SPACING_MS = 1500;
+// How many items to pull from each RSS/NewsAPI source per run...
+const MAX_ITEMS_PER_SOURCE = envInt("MAX_ITEMS_PER_SOURCE", 25);
+// ...and max *new* (non-duplicate) items to AI-process + publish per run.
+const MAX_ITEMS_PER_RUN = envInt("MAX_ITEMS_PER_RUN", 40);
+
+// Minimum delay between AI calls (rate-limit cushion).
+const AI_CALL_SPACING_MS = envInt("AI_CALL_SPACING_MS", 1000);
 
 function log(level, message, meta) {
   const line = `[${level.toUpperCase()}] ${message}`;
@@ -367,22 +375,63 @@ async function collectNewsApiItems() {
   return collected;
 }
 
+/**
+ * Collect from all sources, then keep only *new* URLs (not already in DB)
+ * up to MAX_ITEMS_PER_RUN. This way every 10-minute run posts as many new
+ * stories as exist (within the safety cap), instead of wasting the cap on
+ * duplicates from BBC/etc.
+ */
 async function collectItems() {
   const rssItems = await collectRssItems();
   const newsApiItems = await collectNewsApiItems();
-  return [...rssItems, ...newsApiItems].slice(0, MAX_ITEMS_PER_RUN);
+  const candidates = [...rssItems, ...newsApiItems];
+
+  const fresh = [];
+  let alreadyKnown = 0;
+
+  for (const entry of candidates) {
+    if (!entry.item?.link || !entry.item?.title) continue;
+    try {
+      const dup = await isDuplicate(entry.item.link);
+      if (dup) {
+        alreadyKnown++;
+        continue;
+      }
+    } catch (error) {
+      // If dedupe check fails, still try to process (saveNews/processItem will surface errors).
+      log("warn", "Duplicate check failed — keeping item as candidate", {
+        url: entry.item.link,
+        message: error.message
+      });
+    }
+    fresh.push(entry);
+    if (fresh.length >= MAX_ITEMS_PER_RUN) break;
+  }
+
+  log("info", "Fresh items after dedupe", {
+    fetched: candidates.length,
+    alreadyKnown,
+    fresh: fresh.length,
+    cap: MAX_ITEMS_PER_RUN
+  });
+
+  return fresh;
 }
 
 async function run() {
   const startedAt = Date.now();
-  log("info", `Starting run (AI prompt v${PROMPT_VERSION})`);
+  log("info", `Starting run (AI prompt v${PROMPT_VERSION})`, {
+    maxItemsPerSource: MAX_ITEMS_PER_SOURCE,
+    maxItemsPerRun: MAX_ITEMS_PER_RUN,
+    aiCallSpacingMs: AI_CALL_SPACING_MS
+  });
 
   const candidates = await collectItems();
 
   const activeSourceCount = SOURCES.length + (process.env.NEWS_API_KEY ? 1 : 0);
   log(
     "info",
-    `Collected ${candidates.length} candidate items from ${activeSourceCount} source(s)`
+    `Processing ${candidates.length} new item(s) from ${activeSourceCount} source(s)`
   );
 
   let processed = 0;
