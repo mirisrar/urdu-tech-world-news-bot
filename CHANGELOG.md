@@ -4,6 +4,32 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). Versions abhi 
 
 ## [Unreleased]
 
+### Changed (faster posting cadence)
+- GitHub Actions cron: hourly → **every 10 minutes** (`*/10 * * * *`), with concurrency lock so runs don’t overlap.
+- Higher defaults: `MAX_ITEMS_PER_SOURCE=25`, `MAX_ITEMS_PER_RUN=40` (env-tunable).
+- Collector now **dedupes first**, then processes every *new* story up to the cap (so the run isn’t wasted on already-saved BBC items).
+
+### Fixed (local Pakistan coverage)
+- Added Google News Pakistan RSS first in `SOURCES`: `hl=en-PK&gl=PK&ceid=PK:en` and Urdu `hl=ur&gl=PK&ceid=PK:ur` (verified live; geo/PK section feed is unavailable).
+- Parse Google “Headline - Publisher” titles so DB `source` stores the real outlet (Dawn, Radio Pakistan, etc.).
+
+### Fixed (Urdu content quality + unique images)
+- New `fetcher.js`: extracts richest RSS/NewsAPI source text (`content:encoded` → content → summary/description) so the AI is not headline-only.
+- New `ai_agent.js` (prompt v3): strict Urdu system instruction, schema keys `title_urdu` / `body_urdu` / `image_prompt`, min-length + Arabic-script validation, rejects English/short bodies.
+- Topic-specific `image_prompt` required; generic prompts auto-replaced with a per-article detailed prompt (never a hardcoded static prompt).
+- `imagePipeline.js`: unique Pollinations `seed` per article; no shared static image-prompt fallback.
+
+### Added (Phase 8 — Monitoring & Analytics)
+- Confirmed existing **Nexora CMS Analytics** (`analytics.html` / `analytics.js`) — views, charts, category breakdown, publishing report, CSV export — no rebuild in this bot repo.
+- New `monitoring/runAlert.js`: end-of-run Telegram health alert (processed/skipped/failed/duration + error snippets). Wired into `index.js` after every run and on fatal failure. Fail-soft; optional `TELEGRAM_ALERT_CHAT_ID` + `TELEGRAM_ALERT_MODE` (`always`|`failures`|`off`).
+- Workflow + `.env.example` updated for the new alert env vars.
+
+### Added (Phase 7 — Admin Dashboard / shared schema + RLS)
+- Confirmed existing **Nexora CMS Admin** on the website (dashboard / news list / add-edit form) already covers news add, edit, save, and delete against the shared Supabase `news` table — no new Admin UI built in this bot repo.
+- `website-integration/database/schema-align.sql`: Admin columns (`views`, `featured`, `reading_time`), bot/publish columns, nullable `source`/`url` for manual posts, partial unique index on `url`.
+- Updated `website-integration/database/rls-policy.sql`: `anon` SELECT-only; `authenticated` full CRUD on `news`; Storage policies for `news-images` (public read, authenticated upload). Bot continues to use `service_role` (RLS bypass).
+- Docs: Phase 7 marked ✅ Done; `DATABASE_SCHEMA.md` / `SECURITY_GUIDELINES.md` describe Bot + Admin + Public three-role access model.
+
 ### Added
 - Full project documentation suite: `PROJECT_OVERVIEW.md`, `PROJECT_ROADMAP.md`, `PROJECT_RULES.md`, `TECH_STACK.md`, `ARCHITECTURE.md`, `DATABASE_SCHEMA.md`, `API_DOCUMENTATION.md`, `BOT_ARCHITECTURE.md`, `AI_PIPELINE.md`, `FOLDER_STRUCTURE.md`, `UI_UX_GUIDELINES.md`, `CODING_STANDARDS.md`, `DEVELOPMENT_WORKFLOW.md`, `DEPLOYMENT_GUIDE.md`, `TESTING_GUIDE.md`, `SECURITY_GUIDELINES.md`, `CONTRIBUTING.md`.
 - 9-phase project roadmap (Stability → Multi-Source → AI Pipeline → Publishing → Images → Website → Dashboard → Monitoring → Scale), with a weighted completion-percentage tracker.

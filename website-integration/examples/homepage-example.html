@@ -1,0 +1,144 @@
+<!doctype html>
+<!--
+  Reference example only — shows how to wire newsApi.js into a homepage.
+  Adapt the markup/classes to Nexora News Urdu's actual modular CSS;
+  the JavaScript wiring (imports, function calls, DOM updates) is the
+  reusable part.
+-->
+<html lang="ur" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Nexora News Urdu</title>
+  </head>
+  <body>
+    <section id="hero-news" aria-label="سرخی کی خبر"></section>
+
+    <section id="breaking-news" aria-label="بریکنگ نیوز">
+      <h2>بریکنگ نیوز</h2>
+      <ul id="breaking-news-list"></ul>
+    </section>
+
+    <section id="trending-news" aria-label="ٹرینڈنگ">
+      <h2>ٹرینڈنگ</h2>
+      <ul id="trending-news-list"></ul>
+    </section>
+
+    <section id="latest-news" aria-label="تازہ ترین خبریں">
+      <h2>تازہ ترین خبریں</h2>
+      <div id="category-filters"></div>
+      <div id="latest-news-grid"></div>
+      <button id="load-more">مزید خبریں</button>
+    </section>
+
+    <script type="module">
+      import {
+        getHeroNews,
+        getBreakingNews,
+        getTrendingNews,
+        getLatestNews,
+        getCategories
+      } from "../newsApi.js";
+      import { subscribeToNewArticles } from "../realtime.js";
+      import { formatRelativeTime, resolveImageUrl, excerpt, articleUrl } from "../utils.js";
+
+      function renderHero(article) {
+        const el = document.getElementById("hero-news");
+        if (!article) {
+          el.innerHTML = "";
+          return;
+        }
+        el.innerHTML = `
+          <a href="${articleUrl(article)}" class="hero-card">
+            <img src="${resolveImageUrl(article.image_url)}" alt="${article.urdu_title}" />
+            <h1>${article.urdu_title}</h1>
+            <p>${excerpt(article.urdu_summary, 200)}</p>
+            <span class="meta">${article.category} • ${formatRelativeTime(article.created_at)}</span>
+          </a>
+        `;
+      }
+
+      function breakingItemHtml(article) {
+        return `<li><a href="${articleUrl(article)}">${article.urdu_title}</a></li>`;
+      }
+
+      function renderBreaking(articles) {
+        document.getElementById("breaking-news-list").innerHTML = articles.map(breakingItemHtml).join("");
+      }
+
+      function renderTrending(articles) {
+        document.getElementById("trending-news-list").innerHTML = articles
+          .map((a) => `<li><a href="${articleUrl(a)}">${a.urdu_title}</a></li>`)
+          .join("");
+      }
+
+      function latestCardHtml(article) {
+        return `
+          <a href="${articleUrl(article)}" class="news-card">
+            <img src="${resolveImageUrl(article.image_url)}" alt="${article.urdu_title}" loading="lazy" />
+            <span class="category-tag">${article.category}</span>
+            <h3>${article.urdu_title}</h3>
+            <p>${excerpt(article.urdu_summary)}</p>
+            <span class="meta">${article.source} • ${formatRelativeTime(article.created_at)}</span>
+          </a>
+        `;
+      }
+
+      let currentPage = 1;
+      let currentCategory = undefined;
+
+      async function loadLatest({ append = false } = {}) {
+        const { items, totalPages } = await getLatestNews({ page: currentPage, category: currentCategory });
+        const grid = document.getElementById("latest-news-grid");
+        const html = items.map(latestCardHtml).join("");
+        grid.innerHTML = append ? grid.innerHTML + html : html;
+        document.getElementById("load-more").style.display = currentPage >= (totalPages || 1) ? "none" : "";
+      }
+
+      async function renderCategoryFilters() {
+        const categories = await getCategories();
+        const container = document.getElementById("category-filters");
+        container.innerHTML =
+          `<button data-category="">سب</button>` +
+          categories.map((c) => `<button data-category="${c}">${c}</button>`).join("");
+
+        container.addEventListener("click", (event) => {
+          const button = event.target.closest("button[data-category]");
+          if (!button) return;
+          currentCategory = button.dataset.category || undefined;
+          currentPage = 1;
+          loadLatest();
+        });
+      }
+
+      document.getElementById("load-more").addEventListener("click", () => {
+        currentPage += 1;
+        loadLatest({ append: true });
+      });
+
+      async function init() {
+        const [hero, breaking, trending] = await Promise.all([
+          getHeroNews(),
+          getBreakingNews(),
+          getTrendingNews()
+        ]);
+
+        renderHero(hero);
+        renderBreaking(breaking);
+        renderTrending(trending);
+        await renderCategoryFilters();
+        await loadLatest();
+
+        // Live updates: prepend brand-new articles to the Breaking News
+        // ticker as soon as the bot saves them, no page refresh needed.
+        subscribeToNewArticles((article) => {
+          const list = document.getElementById("breaking-news-list");
+          list.insertAdjacentHTML("afterbegin", breakingItemHtml(article));
+        });
+      }
+
+      init().catch((error) => {
+        console.error("Failed to load homepage news:", error);
+      });
+    </script>
+  </body>
+</html>

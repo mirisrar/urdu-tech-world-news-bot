@@ -1,30 +1,35 @@
 # Folder Structure
 
-## Current Structure (as of Phase 6)
+## Current Structure (as of Phase 8)
 
 ```
 urdu-tech-world-news-bot/
 ├── .github/
 │   └── workflows/
 │       └── news.yml          # GitHub Actions cron automation
-├── publishers/                # ✅ Started the modularization (Phase 4)
+├── publishers/                # Phase 4 social publishers
 │   ├── facebook.js
 │   ├── telegram.js
 │   ├── x.js
 │   ├── whatsapp.js
 │   └── index.js               # publishAll() orchestrator
-├── website-integration/       # Phase 6 — meant to be COPIED into the Nexora News Urdu repo, not run by this bot
+├── monitoring/
+│   └── runAlert.js            # Phase 8 — Telegram end-of-run health alert
+├── website-integration/       # Phase 6 — copy into Nexora News Urdu repo
 │   ├── supabaseClient.js
 │   ├── newsApi.js
 │   ├── realtime.js
 │   ├── utils.js
 │   ├── config.example.js
 │   ├── database/rls-policy.sql
-│   ├── examples/               # reference HTML pages
+│   ├── database/schema-align.sql
+│   ├── examples/
 │   └── README.md
-├── newsapi.js                 # NewsAPI.org client (Phase 2-adjacent)
-├── imagePipeline.js            # Download + optimize (sharp) + Supabase Storage upload (Phase 5)
-├── index.js                   # Collector + dedupe + AI + image + DB + publish orchestration
+├── fetcher.js                 # RSS/NewsAPI content extraction (raw text for AI)
+├── ai_agent.js                # Gemini Urdu package + image_prompt (prompt v3)
+├── newsapi.js
+├── imagePipeline.js
+├── index.js                   # Orchestration: collect → dedupe → AI → image → DB → publish → alert
 ├── package.json
 ├── README.md
 └── (documentation files — this set)
@@ -70,10 +75,8 @@ urdu-tech-world-news-bot/
 │   │
 │   └── run.js                    # Main entrypoint, replaces current index.js
 │
-├── website-integration/            # ✅ Done (Phase 6) — already exists at repo root (see current structure above); no webhook publisher needed, direct Supabase read was the chosen approach
-│
-├── dashboard/                    # (Phase 7, if built as a separate app)
-│   └── ...
+├── website-integration/            # ✅ Done (Phase 6)
+├── monitoring/                     # ✅ Done (Phase 8) — runAlert.js at repo root
 │
 ├── tests/
 │   ├── ai/
@@ -92,7 +95,7 @@ urdu-tech-world-news-bot/
 
 - This restructuring is **not required for Phase 1** (bug fixes can land in `index.js` as-is). It becomes worthwhile starting **Phase 2/3**, when multiple sources and a dedicated AI module justify separate files.
 - Migrate incrementally — extract one concern at a time (e.g. `db/news.repository.js` first, since it's the simplest, well-bounded piece), rather than a single big-bang rewrite.
-- Nexora News Urdu (the website) is an **existing, already-deployed site external to this repo** — no `website/` folder is needed here; `website-integration/` holds code meant to be copied *into* that separate repo, not run from this one. `dashboard/` (Phase 7) is still undecided (separate repo vs. this one).
+- Nexora News Urdu (the website) is an **existing, already-deployed site external to this repo** — no `website/` folder is needed here; `website-integration/` holds code meant to be copied *into* that separate repo. Admin CMS + Analytics already live in the website repo under `admin/` (Phases 7–8 done).
 
 ## Root-Level Documentation Files (current)
 

@@ -1,6 +1,6 @@
 # UI/UX Guidelines
 
-Yeh guidelines Phase 6 (Website) aur Phase 7 (Admin Dashboard) ke liye hain — abhi tak koi UI codebase mein exist nahi karta, is document ka purpose future build ko consistent direction dena hai.
+Yeh guidelines Phase 6 (Website) aur Phase 7 (Admin Dashboard) ke liye hain. Public site integration helpers is bot repo ke `website-integration/` mein hain; Admin CMS **website repo** ke `admin/` folder mein pehle se maujood hai (Phase 7 done).
 
 ## 1. Language & Direction
 

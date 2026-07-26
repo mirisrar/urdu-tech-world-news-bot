@@ -4,104 +4,131 @@
 
 ## Table: `news`
 
-Yeh current table hai jo `index.js` use kar raha hai. Neeche columns hain jo abhi actively insert/select ho rahe hain, plus proposed additions future phases ke liye.
+Yeh **shared** table hai — news bot (`index.js`, `service_role`) aur Nexora Admin CMS (`admin/news.js`, `admin/add-news.js`, `authenticated`) dono isi mein read/write karte hain. Public website sirf **read** karti hai (`anon`).
 
-### Current Columns (in use)
+### Columns (Bot + Admin — aligned)
 
-| Column | Type (assumed) | Nullable | Description |
+| Column | Type (assumed) | Who writes | Description |
 |---|---|---|---|
-| `id` | `bigint` / `uuid` (auto) | No | Primary key (Supabase default) |
-| `title` | `text` | No | Original (English) headline from RSS |
-| `source` | `text` | No | News source name (e.g. `"BBC"`) |
-| `url` | `text` | No | Original article URL — used for duplicate detection |
-| `category` | `text` | Yes | AI-classified category (e.g. Technology, World) |
-| `urdu_title` | `text` | Yes | AI-translated Urdu headline |
-| `urdu_summary` | `text` | Yes | AI-generated 2-sentence Urdu summary |
-| `article` | `text` | Yes | AI-generated ~300 word Urdu article |
-| `hashtags` | `text` | Yes | AI-generated hashtags (space/comma separated) |
-| `facebook_post` | `text` | Yes | AI-generated ready-to-publish Facebook post text |
-| `image_prompt` | `text` | Yes | AI-generated prompt used for image generation |
-| `image_url` | `text` | Yes | Image URL to actually use for the article — a **permanent Supabase Storage URL** if upload succeeded (Phase 5), otherwise a graceful fallback (raw Pollinations.ai URL, a configured default, or empty). See `imagePipeline.js`. |
-| `created_at` | `timestamptz` (auto) | No | Row creation timestamp (Supabase default, assumed) |
+| `id` | `bigint` / `uuid` (auto) | DB | Primary key |
+| `title` | `text` | Bot + Admin | English headline |
+| `urdu_title` | `text` | Bot + Admin | Urdu headline |
+| `category` | `text` | Bot + Admin | e.g. Technology, World, AI |
+| `urdu_summary` | `text` | Bot + Admin | Short Urdu summary |
+| `article` | `text` | Bot + Admin | Full Urdu article body |
+| `hashtags` | `text` | Bot + Admin | Space/comma-separated tags |
+| `image_url` | `text` | Bot + Admin | Permanent Storage URL or fallback |
+| `views` | `integer` (default `0`) | Admin (+ future site) | View counter — Admin CMS shows this |
+| `featured` | `boolean` (default `false`) | Admin | Featured flag for curation |
+| `reading_time` | `integer` (default `2`) | Admin | Minutes — Admin form field |
+| `source` | `text` (nullable, default `'Manual'`) | Bot (Admin optional) | Feed/source name; Admin posts default to `Manual` |
+| `url` | `text` (nullable, unique when set) | Bot (Admin optional) | Original article URL — duplicate key for bot |
+| `seo_title` | `text` | Bot | AI SEO title (Phase 3) |
+| `facebook_post` | `text` | Bot | AI Facebook-ready text |
+| `image_prompt` | `text` | Bot | AI image prompt |
+| `fb_post_id` | `text` | Bot | Facebook publish id |
+| `telegram_message_id` | `text` | Bot | Telegram publish id |
+| `whatsapp_status` | `text` | Bot | WhatsApp publish status |
+| `x_post_id` | `text` | Bot | X publish id |
+| `published_at` | `timestamptz` | Bot | First successful social publish time |
+| `created_at` | `timestamptz` (auto) | DB | Row creation timestamp |
 
-> **Note**: Exact column types/constraints should be confirmed directly in the Supabase dashboard/schema — this document reflects what the application code (`index.js`) reads/writes, not a verified `CREATE TABLE` statement. Recommend exporting the actual schema (via Supabase SQL editor: `\d news` or the Table Editor) and syncing it here.
+> **Note**: Exact types should be confirmed in the Supabase Table Editor. Yeh document application code (bot + Admin CMS) ke mutabiq aligned hai.
 
-### ⚠️ Required Migration (Phase 3 + Phase 4 — action needed)
+### ⚠️ Required Migration — run once in Supabase SQL editor
 
-`index.js` now generates/tracks several fields that likely don't have matching columns on your Supabase table yet — this change has no database credentials and cannot run migrations itself. Run this in the Supabase SQL editor:
+Canonical file: [`website-integration/database/schema-align.sql`](./website-integration/database/schema-align.sql)
 
 ```sql
--- Phase 3: AI-generated SEO title
-ALTER TABLE news ADD COLUMN IF NOT EXISTS seo_title text;
+-- Admin CMS columns
+ALTER TABLE news ADD COLUMN IF NOT EXISTS views integer DEFAULT 0;
+ALTER TABLE news ADD COLUMN IF NOT EXISTS featured boolean DEFAULT false;
+ALTER TABLE news ADD COLUMN IF NOT EXISTS reading_time integer DEFAULT 2;
 
--- Phase 4: publish-status tracking (one column per channel + a timestamp)
+-- Bot / AI / publish columns
+ALTER TABLE news ADD COLUMN IF NOT EXISTS seo_title text;
+ALTER TABLE news ADD COLUMN IF NOT EXISTS facebook_post text;
+ALTER TABLE news ADD COLUMN IF NOT EXISTS image_prompt text;
 ALTER TABLE news ADD COLUMN IF NOT EXISTS fb_post_id text;
 ALTER TABLE news ADD COLUMN IF NOT EXISTS telegram_message_id text;
 ALTER TABLE news ADD COLUMN IF NOT EXISTS whatsapp_status text;
 ALTER TABLE news ADD COLUMN IF NOT EXISTS x_post_id text;
 ALTER TABLE news ADD COLUMN IF NOT EXISTS published_at timestamptz;
+
+-- Admin "Add News" does not set source/url — must be nullable
+ALTER TABLE news ALTER COLUMN source DROP NOT NULL;
+ALTER TABLE news ALTER COLUMN url DROP NOT NULL;
+ALTER TABLE news ALTER COLUMN source SET DEFAULT 'Manual';
+
+-- Partial unique URL (bot dedupe; multiple NULL urls OK for manual posts)
+CREATE UNIQUE INDEX IF NOT EXISTS news_url_unique_idx ON news (url) WHERE url IS NOT NULL;
+CREATE INDEX IF NOT EXISTS news_category_idx ON news (category);
+CREATE INDEX IF NOT EXISTS news_featured_idx ON news (featured) WHERE featured = true;
+CREATE INDEX IF NOT EXISTS news_created_at_idx ON news (created_at DESC);
 ```
 
-Until this is run, `saveNews()`/`updatePublishStatus()` will detect each missing column (Postgres error `42703`) one at a time, log a warning, and automatically retry the write without it (via the generic `writeWithColumnFallback()` helper in `index.js`) — so the bot **won't break**, but these fields won't be persisted until the columns are added.
+Bot pehle se missing optional columns ke liye `writeWithColumnFallback()` use karta hai (Postgres `42703`) — lekin Admin CMS usually fail-hard karta hai, isliye yeh migration **Admin ke liye zaroori** hai (`views` / `featured` / `reading_time`, aur nullable `source`/`url`).
 
-### ⚠️ Required Setup (Phase 5 — Supabase Storage bucket)
+### Storage bucket (Phase 5 + Admin uploads)
 
-`imagePipeline.js` uploads optimized images to a Supabase Storage bucket (default name `news-images`, configurable via `SUPABASE_STORAGE_BUCKET`). **This bucket must be created manually** (Supabase dashboard → Storage → New bucket → mark it **public** so `getPublicUrl()` URLs are actually reachable). Until it exists, image uploads fail and the bot automatically falls back to the pre-Phase-5 on-the-fly Pollinations.ai URL — nothing breaks, but images won't be permanently stored.
+Bucket name: `news-images` (or `SUPABASE_STORAGE_BUCKET`). **Public for reads.** Create manually in Supabase dashboard if missing.
 
-> **Design note**: a separate `stored_image_url` column was originally proposed for this (see below), but the implementation instead **overwrites `image_url` directly** with whichever URL is actually usable (permanent or fallback) — one column, one source of truth, simpler for every consumer (publishers, future website) to read.
+- Bot uploads with `service_role` (RLS bypass).
+- Admin `add-news.js` uploads with the logged-in `authenticated` session — needs Storage policies in `rls-policy.sql`.
 
-### Proposed Additions (per `PROJECT_ROADMAP.md`, later phases)
+## Who can read / write (RLS)
 
-| Column | Type | Phase | Purpose |
+| Actor | Key / role | `news` access | Storage `news-images` |
 |---|---|---|---|
-| `published_website_at` | `timestamptz` | Phase 6 | Timestamp when shown on website |
-| `status` | `text` (enum-like: `pending`, `processed`, `published`, `failed`) | Phase 1/4 | Overall pipeline status tracking |
-| `error_log` | `text` | Phase 1/8 | Last error message, if processing/publishing failed |
-| `views` | `integer` | Phase 8 | Website view count (analytics) |
-| `engagement_score` | `numeric` | Phase 8 | Aggregated social engagement metric |
+| Public website | `anon` | SELECT only | SELECT (public URLs) |
+| Admin CMS | `authenticated` (Supabase Auth login) | SELECT, INSERT, UPDATE, DELETE | SELECT, INSERT, UPDATE, DELETE |
+| News bot | `service_role` | Full (bypasses RLS) | Full (bypasses RLS) |
 
-### Indexes (recommended)
-
-- Unique index on `url` (enforce duplicate prevention at the DB level, not just application logic).
-- Index on `category` (for website filtering — Phase 6).
-- Index on `status` (for publisher queries — Phase 4).
-
-### Future Tables (proposed, later phases)
-
-| Table | Purpose | Phase |
-|---|---|---|
-| `rss_sources` | Configurable list of RSS feed URLs + category mapping + enabled/disabled flag | Phase 2, Phase 7 |
-| `bot_runs` | Log of each automation run (start/end time, items processed, errors) | Phase 8 |
-| `admin_settings` | Key-value settings for dashboard-managed configuration | Phase 7 |
-| `admin_users` | Dashboard authentication (if not using Supabase Auth directly) | Phase 7 |
-
-## Duplicate Prevention Strategy
-
-Current logic (`index.js`) queries `news` by `url` before processing. Recommended improvement (Phase 1): add a **unique constraint** on `url` at the database level as a safety net, so even if application logic fails, a duplicate insert is rejected rather than silently succeeding.
-
-## ⚠️⚠️ Required Migration (Phase 6 — critical, security-related)
-
-Phase 6 (website integration) means the website reads `news` directly from the browser using the Supabase **anon key** — which is therefore now effectively public. To keep this safe, Row Level Security must restrict the `anon` role to **read-only**:
+Canonical SQL: [`website-integration/database/rls-policy.sql`](./website-integration/database/rls-policy.sql)
 
 ```sql
 ALTER TABLE news ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Public read access on news"
-  ON news
-  FOR SELECT
-  USING (true);
+CREATE POLICY "Anon read access on news"
+  ON news FOR SELECT TO anon USING (true);
+
+CREATE POLICY "Authenticated read access on news"
+  ON news FOR SELECT TO authenticated USING (true);
+
+CREATE POLICY "Authenticated insert on news"
+  ON news FOR INSERT TO authenticated WITH CHECK (true);
+
+CREATE POLICY "Authenticated update on news"
+  ON news FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+
+CREATE POLICY "Authenticated delete on news"
+  ON news FOR DELETE TO authenticated USING (true);
 ```
 
-(Canonical copy: `website-integration/database/rls-policy.sql` in this repo.)
+(+ matching `storage.objects` policies for bucket `news-images` — see the full SQL file.)
 
-**Do this in the following order, not the other way around**:
+### ⚠️ Setup order (critical)
 
-1. First, get your `service_role` key (Supabase dashboard → Settings → API) and add it as a GitHub Actions secret named `SUPABASE_SERVICE_ROLE_KEY`. `index.js` already prefers this key over `SUPABASE_ANON_KEY` for its own writes (with a fallback + warning if it's not set — see `SECURITY_GUIDELINES.md`).
-2. **Then** run the RLS policy above. Once applied, `SUPABASE_ANON_KEY` can no longer INSERT/UPDATE into `news` — only `service_role` can (it bypasses RLS entirely). If you apply the RLS policy before adding the service role secret, the bot will start failing every write until you do.
+1. Add GitHub Actions secret `SUPABASE_SERVICE_ROLE_KEY` (bot writes).
+2. Confirm Admin login uses **Supabase Auth** (`signInWithPassword` / session JWT → role `authenticated`). Agar Admin sirf custom password + anon key se write kar raha ho, RLS apply hote hi **edit/save/delete fail** ho jayenge.
+3. Run `schema-align.sql`, phir `rls-policy.sql`.
+4. (Optional) Realtime: `ALTER PUBLICATION supabase_realtime ADD TABLE news;`
 
-Optional, for live updates on the website (`website-integration/realtime.js`):
+### Admin Auth checklist
 
-```sql
-ALTER PUBLICATION supabase_realtime ADD TABLE news;
-```
-(or toggle it on via Supabase dashboard → Database → Replication.)
+- Supabase dashboard → Authentication → Users: kam az kam ek admin user banao.
+- Admin `auth.js` / login page: Supabase Auth session set kare (anon key client + user JWT).
+- **Kabhi bhi** `service_role` key Admin ya public website `config.js` mein mat daalo.
+
+## Future Tables (optional)
+
+| Table | Purpose | Notes |
+|---|---|---|
+| `rss_sources` | Configurable RSS list | Deferred — bot config still code/env based |
+| `bot_runs` | Run history / errors | Phase 8 monitoring |
+| `admin_settings` | Dashboard key-value settings | Optional; not required for news CRUD |
+
+## Duplicate Prevention
+
+- Application: bot checks `news.url` before insert.
+- Database: partial unique index `news_url_unique_idx` on `url WHERE url IS NOT NULL`.
