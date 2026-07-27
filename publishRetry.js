@@ -7,6 +7,7 @@
  */
 
 import { listConfiguredChannels, publishAll } from "./publishers/index.js";
+import { canAttemptFacebook } from "./publishers/facebookThrottle.js";
 
 const CHANNEL_ID_COLUMN = {
   facebook: "fb_post_id",
@@ -124,6 +125,17 @@ export async function retryPendingPublishes(supabase, updatePublishStatus, log, 
       continue;
     }
 
+    // Don't burn the queue once Facebook's per-run quota is used — leave
+    // remaining FB rows for the next cron (~5 min later).
+    let channels = missing;
+    if (missing.includes("facebook") && !canAttemptFacebook()) {
+      channels = missing.filter((name) => name !== "facebook");
+      if (channels.length === 0) {
+        skipped++;
+        continue;
+      }
+    }
+
     try {
       const results = await publishAll(
         {
@@ -134,7 +146,7 @@ export async function retryPendingPublishes(supabase, updatePublishStatus, log, 
           imageUrl: row.image_url || "",
           sourceUrl: row.url || ""
         },
-        { onlyChannels: missing }
+        { onlyChannels: channels }
       );
 
       const anyOk = Object.values(results).some((r) => r.published);
@@ -144,8 +156,12 @@ export async function retryPendingPublishes(supabase, updatePublishStatus, log, 
       }
 
       const summary = Object.entries(results)
-        .filter(([, r]) => !r.skipped)
-        .map(([ch, r]) => `${ch}=${r.published ? "ok" : `failed(${r.error})`}`)
+        .filter(([, r]) => !r.skipped || r.reason)
+        .map(([ch, r]) => {
+          if (r.published) return `${ch}=ok`;
+          if (r.skipped && r.reason) return `${ch}=deferred(${r.reason})`;
+          return `${ch}=failed(${r.error})`;
+        })
         .join(", ");
 
       log("info", "Publish retry result", {

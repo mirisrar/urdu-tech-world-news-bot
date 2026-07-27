@@ -2,9 +2,10 @@ name: News Bot
 
 on:
   schedule:
-    # Every 10 minutes — pick up and post all new stories (deduped).
-    # Note: GitHub can delay cron under load; concurrency below prevents overlap.
-    - cron: "*/10 * * * *"
+    # Every 5 minutes — Facebook posts at most 1 per run (FACEBOOK_MAX_POSTS_PER_RUN),
+    # so the Page gets ~1 post / 5 min instead of a burst. GitHub may delay cron under load;
+    # concurrency below prevents overlap.
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 concurrency:
@@ -32,10 +33,13 @@ jobs:
           # is applied — the bot needs this to keep writing (see DATABASE_SCHEMA.md).
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          # 10-min schedule: pull more per feed, process every new story (cap for safety).
+          # 5-min schedule: pull more per feed, process every new story (cap for safety).
           MAX_ITEMS_PER_SOURCE: "25"
           MAX_ITEMS_PER_RUN: "40"
           AI_CALL_SPACING_MS: "1000"
+          # Facebook: 1 post per run (~every 5 min with cron). Rest deferred to next run.
+          FACEBOOK_MAX_POSTS_PER_RUN: "1"
+          FACEBOOK_POST_INTERVAL_MS: "300000"
           # Phase 9 — title dedupe + DB publish retry (no Redis).
           TITLE_DEDUPE_LOOKBACK: "200"
           TITLE_SIMILARITY_THRESHOLD: "0.72"

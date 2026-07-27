@@ -3,7 +3,17 @@
  *
  * Requires: FACEBOOK_PAGE_ID, FACEBOOK_PAGE_ACCESS_TOKEN
  * (a Page access token with the pages_manage_posts permission).
+ *
+ * Pacing: FACEBOOK_MAX_POSTS_PER_RUN (default 1) — extra posts are deferred
+ * so the Page is not flooded in one bot run. Pair with a 5-minute cron.
  */
+
+import {
+  canAttemptFacebook,
+  consumeFacebookAttemptSlot,
+  noteFacebookSuccess,
+  waitForFacebookInterval
+} from "./facebookThrottle.js";
 
 const FACEBOOK_API_VERSION = "v21.0";
 const FACEBOOK_GRAPH_BASE_URL = `https://graph.facebook.com/${FACEBOOK_API_VERSION}`;
@@ -83,9 +93,22 @@ export async function publishToFacebook({ facebookPost, hashtags, imageUrl, sour
     throw new Error("FACEBOOK_PAGE_ID and FACEBOOK_PAGE_ACCESS_TOKEN must both be set");
   }
 
+  // Soft-skip when this run's Facebook quota is already used — caller treats
+  // skipped as "try again later" (publish retry / next cron), not a hard fail.
+  if (!canAttemptFacebook()) {
+    return { published: false, skipped: true, reason: "max_per_run" };
+  }
+
   const message = buildFacebookMessage(facebookPost, hashtags);
   if (!message) {
     throw new Error("publishToFacebook: 'facebookPost' text is required");
+  }
+
+  await waitForFacebookInterval();
+
+  const slot = consumeFacebookAttemptSlot();
+  if (!slot.ok) {
+    return { published: false, skipped: true, reason: slot.reason };
   }
 
   const usePhoto = Boolean(imageUrl);
@@ -124,5 +147,6 @@ export async function publishToFacebook({ facebookPost, hashtags, imageUrl, sour
     throw new Error("Facebook API response missing a post id");
   }
 
+  noteFacebookSuccess();
   return { published: true, id: postId };
 }
