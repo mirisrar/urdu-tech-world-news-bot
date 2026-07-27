@@ -76,7 +76,8 @@ const SOURCES = [
 const NEWS_API_QUERIES = ["technology"];
 
 // Tunable via env (see .env.example / news.yml). Defaults are sized for a
-// ~10-minute schedule: pull plenty from each feed, then process every *new*
+// ~5-minute schedule: pull plenty from each feed, then process every *new*
+// story (deduped). Facebook is capped separately (1 post/run by default).
 // (non-duplicate) item up to a safety cap so Gemini/API cost can't explode.
 function envInt(name, fallback) {
   const raw = process.env[name];
@@ -284,8 +285,12 @@ async function publishAndRecord(newsId, item, sourceName, aiResult, imageUrl) {
     });
 
     const summary = Object.entries(results)
-      .filter(([, result]) => !result.skipped)
-      .map(([channel, result]) => `${channel}=${result.published ? "ok" : `failed(${result.error})`}`);
+      .filter(([, result]) => !result.skipped || result.reason)
+      .map(([channel, result]) => {
+        if (result.published) return `${channel}=ok`;
+        if (result.skipped && result.reason) return `${channel}=deferred(${result.reason})`;
+        return `${channel}=failed(${result.error})`;
+      });
 
     if (summary.length > 0) {
       log("info", "Publish results", { source: sourceName, summary: summary.join(", ") });
@@ -501,7 +506,8 @@ async function run() {
   log("info", `Starting run (AI prompt v${PROMPT_VERSION})`, {
     maxItemsPerSource: MAX_ITEMS_PER_SOURCE,
     maxItemsPerRun: MAX_ITEMS_PER_RUN,
-    aiCallSpacingMs: AI_CALL_SPACING_MS
+    aiCallSpacingMs: AI_CALL_SPACING_MS,
+    facebookMaxPostsPerRun: Number.parseInt(process.env.FACEBOOK_MAX_POSTS_PER_RUN || "1", 10) || 1
   });
 
   const candidates = await collectItems();
