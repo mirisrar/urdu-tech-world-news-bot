@@ -77,8 +77,8 @@ const NEWS_API_QUERIES = ["technology"];
 
 // Tunable via env (see .env.example / news.yml). Defaults are sized for a
 // ~5-minute schedule: pull plenty from each feed, then process every *new*
-// story (deduped). Facebook is capped separately (1 post/run by default).
 // (non-duplicate) item up to a safety cap so Gemini/API cost can't explode.
+// Facebook is capped separately (1 post/run by default).
 function envInt(name, fallback) {
   const raw = process.env[name];
   if (raw === undefined || raw === "") return fallback;
