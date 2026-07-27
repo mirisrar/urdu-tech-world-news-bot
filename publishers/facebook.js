@@ -9,6 +9,57 @@ const FACEBOOK_API_VERSION = "v21.0";
 const FACEBOOK_GRAPH_BASE_URL = `https://graph.facebook.com/${FACEBOOK_API_VERSION}`;
 
 /**
+ * Normalize hashtag list/string into a single space-separated "#tag" line.
+ * @param {string|string[]|undefined|null} hashtags
+ * @returns {string}
+ */
+function normalizeHashtags(hashtags) {
+  const raw = Array.isArray(hashtags)
+    ? hashtags.join(" ")
+    : typeof hashtags === "string"
+      ? hashtags
+      : "";
+
+  const tags = raw
+    .split(/[\s,]+/)
+    .map((tag) => tag.trim())
+    .filter(Boolean)
+    .map((tag) => (tag.startsWith("#") ? tag : `#${tag}`));
+
+  // Dedupe case-insensitively while preserving first spelling.
+  const seen = new Set();
+  const unique = [];
+  for (const tag of tags) {
+    const key = tag.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(tag);
+  }
+  return unique.join(" ");
+}
+
+/**
+ * Append hashtags to the Facebook message when missing from the post body.
+ * @param {string} facebookPost
+ * @param {string|string[]|undefined|null} hashtags
+ * @returns {string}
+ */
+function buildFacebookMessage(facebookPost, hashtags) {
+  const message = String(facebookPost || "").trim();
+  const tagLine = normalizeHashtags(hashtags);
+  if (!tagLine) return message;
+
+  // Skip append if the post already ends with / contains the same tag set.
+  const messageLower = message.toLowerCase();
+  const allPresent = tagLine
+    .split(/\s+/)
+    .every((tag) => messageLower.includes(tag.toLowerCase()));
+  if (allPresent) return message;
+
+  return `${message}\n\n${tagLine}`;
+}
+
+/**
  * Publishes a news item to a Facebook Page's feed via the Graph API.
  *
  * If an image URL is available, posts to `/{page-id}/photos` (the Graph
@@ -18,12 +69,13 @@ const FACEBOOK_GRAPH_BASE_URL = `https://graph.facebook.com/${FACEBOOK_API_VERSI
  *
  * @param {object} payload
  * @param {string} payload.facebookPost - Ready-to-publish Urdu post text.
+ * @param {string|string[]} [payload.hashtags] - Hashtags appended to the post.
  * @param {string} [payload.imageUrl] - Remote image URL to attach.
  * @param {string} [payload.sourceUrl] - Original article URL (used as `link` for text-only posts).
  * @returns {Promise<{ published: true, id: string }>}
  * @throws {Error} If required env vars are missing, the request fails, or Facebook returns an error.
  */
-export async function publishToFacebook({ facebookPost, imageUrl, sourceUrl }) {
+export async function publishToFacebook({ facebookPost, hashtags, imageUrl, sourceUrl }) {
   const pageId = process.env.FACEBOOK_PAGE_ID;
   const accessToken = process.env.FACEBOOK_PAGE_ACCESS_TOKEN;
 
@@ -31,7 +83,7 @@ export async function publishToFacebook({ facebookPost, imageUrl, sourceUrl }) {
     throw new Error("FACEBOOK_PAGE_ID and FACEBOOK_PAGE_ACCESS_TOKEN must both be set");
   }
 
-  const message = facebookPost?.trim();
+  const message = buildFacebookMessage(facebookPost, hashtags);
   if (!message) {
     throw new Error("publishToFacebook: 'facebookPost' text is required");
   }
