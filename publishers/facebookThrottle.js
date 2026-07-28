@@ -1,8 +1,9 @@
 /**
- * Facebook post pacing — at most N posts per bot run, spaced for Page cadence.
+ * Facebook post pacing — drip posts inside a single Actions run.
  *
- * Default: 1 Facebook attempt per run. Pair with a 5-minute cron so the Page
- * gets ~1 post every 5 minutes instead of a burst of many at once.
+ * GitHub five-minute cron is unreliable (often delayed/skipped), so we cannot
+ * depend on a new workflow every 5 minutes. Instead one run may publish
+ * several Facebook posts, waiting FACEBOOK_POST_INTERVAL_MS between them.
  */
 
 function envInt(name, fallback) {
@@ -23,9 +24,9 @@ const state = {
  */
 export function getFacebookThrottleConfig() {
   return {
-    // 1 = one FB post attempt per Actions run (recommended with */5 cron).
-    maxPerRun: envInt("FACEBOOK_MAX_POSTS_PER_RUN", 1),
-    // Used only when maxPerRun > 1 within the same process.
+    // How many FB posts this Actions job may attempt (drip with interval).
+    maxPerRun: envInt("FACEBOOK_MAX_POSTS_PER_RUN", 12),
+    // Wait between successful posts inside the same run (~5 minutes).
     intervalMs: envInt("FACEBOOK_POST_INTERVAL_MS", 5 * 60 * 1000)
   };
 }
@@ -52,7 +53,7 @@ export function consumeFacebookAttemptSlot() {
 }
 
 /**
- * Record a successful Facebook publish (for optional in-run spacing).
+ * Record a successful Facebook publish (starts the inter-post timer).
  */
 export function noteFacebookSuccess() {
   state.successesThisRun += 1;
@@ -60,18 +61,36 @@ export function noteFacebookSuccess() {
 }
 
 /**
- * If maxPerRun > 1, wait until FACEBOOK_POST_INTERVAL_MS since last success.
+ * Wait until FACEBOOK_POST_INTERVAL_MS since the last successful FB post.
+ * Used so one long Actions run can drip 1 post / 5 minutes.
  */
 export async function waitForFacebookInterval(sleepFn = (ms) => new Promise((r) => setTimeout(r, ms))) {
-  const { maxPerRun, intervalMs } = getFacebookThrottleConfig();
-  if (maxPerRun <= 1 || intervalMs <= 0 || !state.lastSuccessAt) {
-    return;
+  const { intervalMs } = getFacebookThrottleConfig();
+  if (intervalMs <= 0 || !state.lastSuccessAt) {
+    return 0;
   }
   const elapsed = Date.now() - state.lastSuccessAt;
   const waitMs = intervalMs - elapsed;
-  if (waitMs > 0) {
-    await sleepFn(waitMs);
+  if (waitMs <= 0) {
+    return 0;
   }
+
+  const waitSec = Math.ceil(waitMs / 1000);
+  console.log(
+    `[INFO] Waiting ${waitSec}s before next Facebook post (drip interval)`,
+    JSON.stringify({
+      waitMs,
+      successesThisRun: state.successesThisRun,
+      intervalMs
+    })
+  );
+  await sleepFn(waitMs);
+  return waitMs;
+}
+
+/** @returns {{ attemptsThisRun: number, successesThisRun: number, lastSuccessAt: number }} */
+export function getFacebookThrottleState() {
+  return { ...state };
 }
 
 /** Test helper — reset in-process counters. */

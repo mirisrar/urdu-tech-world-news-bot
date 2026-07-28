@@ -509,7 +509,8 @@ async function run() {
     maxItemsPerSource: MAX_ITEMS_PER_SOURCE,
     maxItemsPerRun: MAX_ITEMS_PER_RUN,
     aiCallSpacingMs: AI_CALL_SPACING_MS,
-    facebookMaxPostsPerRun: Number.parseInt(process.env.FACEBOOK_MAX_POSTS_PER_RUN || "1", 10) || 1
+    facebookMaxPostsPerRun: Number.parseInt(process.env.FACEBOOK_MAX_POSTS_PER_RUN || "12", 10) || 12,
+    facebookPostIntervalMs: Number.parseInt(process.env.FACEBOOK_POST_INTERVAL_MS || "300000", 10) || 300000
   });
 
   const candidates = await collectItems();

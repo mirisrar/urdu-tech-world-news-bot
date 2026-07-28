@@ -4,8 +4,9 @@
  * Requires: FACEBOOK_PAGE_ID, FACEBOOK_PAGE_ACCESS_TOKEN
  * (a Page access token with the pages_manage_posts permission).
  *
- * Pacing: FACEBOOK_MAX_POSTS_PER_RUN (default 1) — extra posts are deferred
- * so the Page is not flooded in one bot run. Pair with a 5-minute cron.
+ * Pacing: FACEBOOK_MAX_POSTS_PER_RUN posts per Actions job, waiting
+ * FACEBOOK_POST_INTERVAL_MS (~5 min) between successes so the Page is
+ * not flooded. GitHub cron alone is too unreliable for exact 5-minute firing.
  */
 
 import {
