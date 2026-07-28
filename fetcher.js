@@ -8,6 +8,11 @@
  */
 
 import Parser from "rss-parser";
+import {
+  isLegacySharedFallback,
+  LEGACY_SHARED_FALLBACK_IMAGE,
+  pickUniqueFallbackImage
+} from "./fallbackImages.js";
 
 const parser = new Parser({
   customFields: {
@@ -23,10 +28,12 @@ const parser = new Parser({
 const MAX_RAW_CONTENT_CHARS = 6000;
 const PAGE_FETCH_TIMEOUT_MS = 8000;
 
-/** Clean high-quality news placeholder when no original image exists. */
+/**
+ * @deprecated Prefer pickUniqueFallbackImage() — kept only so older imports /
+ * imagePipeline skip-checks for the *legacy shared* URL still resolve.
+ */
 export const DEFAULT_NEWS_PLACEHOLDER_IMAGE =
-  process.env.DEFAULT_FALLBACK_IMAGE_URL ||
-  "https://images.unsplash.com/photo-1504711434969-e33886168f5c?auto=format&fit=crop&w=1200&h=630&q=80";
+  process.env.DEFAULT_FALLBACK_IMAGE_URL || LEGACY_SHARED_FALLBACK_IMAGE;
 
 const USER_AGENT =
   "Mozilla/5.0 (compatible; NexoraNewsBot/1.0; +https://github.com/mirisrar/urdu-tech-world-news-bot)";
@@ -253,14 +260,43 @@ export async function fetchOgImageFromPage(articleUrl, log = () => {}) {
 }
 
 /**
+ * Pull non-Google publisher links from RSS HTML (Google News descriptions
+ * often embed the real article URL).
+ * @param {string} html
+ * @returns {string[]}
+ */
+export function extractPublisherLinksFromHtml(html) {
+  if (!html || typeof html !== "string") return [];
+  const urls = [];
+  const re = /href=["'](https?:\/\/[^"']+)["']/gi;
+  let match;
+  while ((match = re.exec(html)) !== null) {
+    const url = normalizeImageUrl(match[1]) || String(match[1] || "").trim();
+    if (!url || !/^https?:\/\//i.test(url)) continue;
+    if (/news\.google\.com|google\.com\/url|googleapis\.com|gstatic\.com/i.test(url)) continue;
+    if (!urls.includes(url)) urls.push(url);
+  }
+  return urls;
+}
+
+/**
  * Resolve the best original article image for an item.
- * Order: RSS media/enclosure/img → page og:image/twitter:image → placeholder.
+ * Order: RSS media/enclosure/img → page og:image/twitter:image
+ * → unique category/hash stock fallback (never one shared Unsplash for all).
  *
- * @param {{ link?: string, imageHint?: string, imageCandidates?: string[], rawHtml?: string }} item
+ * @param {{
+ *   link?: string,
+ *   title?: string,
+ *   imageHint?: string,
+ *   imageCandidates?: string[],
+ *   rawHtml?: string,
+ *   description?: string
+ * }} item
  * @param {(level: string, message: string, meta?: object) => void} [log]
+ * @param {{ category?: string, sourceName?: string }} [options]
  * @returns {Promise<{ imageUrl: string, source: "rss"|"meta"|"placeholder" }>}
  */
-export async function resolveArticleImage(item, log = () => {}) {
+export async function resolveArticleImage(item, log = () => {}, options = {}) {
   const candidates = [
     ...(item.imageCandidates || []),
     item.imageHint,
@@ -277,26 +313,41 @@ export async function resolveArticleImage(item, log = () => {}) {
     return { imageUrl: unique[0], source: "rss" };
   }
 
-  if (item.link) {
-    // Skip hopeless OG fetches on Google News aggregator pages (no og:image;
-    // publisher URL is JS-gated). Direct Dawn/Geo/BBC/etc. links work fine.
-    const isGoogleNews =
-      /news\.google\.com/i.test(item.link) || /google\.com\/.*\/articles\//i.test(item.link);
+  const pageCandidates = [];
+  if (item.link) pageCandidates.push(item.link);
+  for (const pub of extractPublisherLinksFromHtml(item.rawHtml || item.description || "")) {
+    pageCandidates.push(pub);
+  }
 
-    if (!isGoogleNews) {
-      const og = await fetchOgImageFromPage(item.link, log);
-      if (og) {
-        return { imageUrl: og, source: "meta" };
-      }
-    } else {
-      log("info", "Google News link has no RSS media image — using placeholder", {
-        title: item.title
-      });
+  const tried = new Set();
+  for (const pageUrl of pageCandidates) {
+    const key = String(pageUrl || "").trim();
+    if (!key || tried.has(key)) continue;
+    tried.add(key);
+
+    const og = await fetchOgImageFromPage(key, log);
+    if (og) {
+      return { imageUrl: og, source: "meta" };
     }
   }
 
-  return { imageUrl: DEFAULT_NEWS_PLACEHOLDER_IMAGE, source: "placeholder" };
+  const placeholder = pickUniqueFallbackImage({
+    title: item.title,
+    link: item.link,
+    category: options.category,
+    sourceName: options.sourceName
+  });
+
+  log("info", "No original article image — using unique category fallback", {
+    title: item.title,
+    category: options.category || null,
+    imageUrl: placeholder.slice(0, 100)
+  });
+
+  return { imageUrl: placeholder, source: "placeholder" };
 }
+
+export { isLegacySharedFallback, pickUniqueFallbackImage };
 
 /**
  * Pick the longest useful text blob from common RSS item fields.

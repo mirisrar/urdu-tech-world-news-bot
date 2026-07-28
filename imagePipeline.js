@@ -3,14 +3,18 @@
  *
  * Flow:
  *   1. Caller (index.js) resolves the source image via fetcher.resolveArticleImage()
- *      (RSS media / enclosure / og:image / twitter:image / placeholder).
+ *      (RSS media / enclosure / og:image / twitter:image / unique stock fallback).
  *   2. Optionally download that real image, optimize with sharp, upload to
  *      Supabase Storage for a stable public URL.
- *   3. On any failure, keep the original remote URL (or placeholder).
+ *   3. On any failure, keep the original remote URL (or unique fallback).
  */
 
 import sharp from "sharp";
-import { DEFAULT_NEWS_PLACEHOLDER_IMAGE, normalizeImageUrl } from "./fetcher.js";
+import {
+  DEFAULT_NEWS_PLACEHOLDER_IMAGE,
+  isLegacySharedFallback,
+  normalizeImageUrl
+} from "./fetcher.js";
 
 const OUTPUT_WIDTH = 1200;
 const OUTPUT_HEIGHT = 630;
@@ -77,8 +81,8 @@ async function uploadToStorage(supabase, buffer, slug) {
 }
 
 /**
- * Persist an already-resolved *original* article image URL.
- * Never generates images. Never calls Pollinations / AI image APIs.
+ * Persist an already-resolved *original* article image URL (or unique stock
+ * fallback). Never generates AI images. Never calls Pollinations.
  *
  * @param {object} supabase
  * @param {string} originalImageUrl - From fetcher.resolveArticleImage()
@@ -87,10 +91,15 @@ async function uploadToStorage(supabase, buffer, slug) {
  * @returns {Promise<string>}
  */
 export async function storeOriginalArticleImage(supabase, originalImageUrl, slugSource, log) {
-  const sourceUrl = normalizeImageUrl(originalImageUrl) || DEFAULT_NEWS_PLACEHOLDER_IMAGE;
+  const sourceUrl = normalizeImageUrl(originalImageUrl);
+  if (!sourceUrl) {
+    return DEFAULT_NEWS_PLACEHOLDER_IMAGE;
+  }
 
-  // Skip re-hosting the shared placeholder — just return it.
-  if (sourceUrl === DEFAULT_NEWS_PLACEHOLDER_IMAGE) {
+  // Skip re-hosting only the *legacy shared* placeholder (identical on every
+  // row). Unique per-article stock fallbacks should still be uploaded when
+  // Storage is available so the site keeps stable URLs.
+  if (isLegacySharedFallback(sourceUrl)) {
     return sourceUrl;
   }
 
@@ -98,7 +107,7 @@ export async function storeOriginalArticleImage(supabase, originalImageUrl, slug
   try {
     rawImage = await downloadImage(sourceUrl);
   } catch (error) {
-    log("warn", "Failed to download original article image — using source URL as-is", {
+    log("warn", "Failed to download article image — using source URL as-is", {
       message: error.message
     });
     return sourceUrl;
@@ -108,7 +117,7 @@ export async function storeOriginalArticleImage(supabase, originalImageUrl, slug
   try {
     optimized = await optimizeImage(rawImage);
   } catch (error) {
-    log("warn", "Failed to optimize original image — using source URL as-is", {
+    log("warn", "Failed to optimize image — using source URL as-is", {
       message: error.message
     });
     return sourceUrl;
@@ -119,7 +128,7 @@ export async function storeOriginalArticleImage(supabase, originalImageUrl, slug
   } catch (error) {
     log(
       "warn",
-      "Failed to upload original image to Supabase Storage — using original remote URL. " +
+      "Failed to upload image to Supabase Storage — using remote URL. " +
         `Create a public '${STORAGE_BUCKET}' bucket to enable permanent storage.`,
       { message: error.message }
     );

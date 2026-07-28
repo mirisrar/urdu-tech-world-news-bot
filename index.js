@@ -325,20 +325,8 @@ async function processItem(item, sourceName) {
     return "skipped";
   }
 
-  // Original article image (RSS media / enclosure / og:image / twitter:image).
-  // AI / Pollinations image generation is disabled.
-  const { imageUrl: originalImageUrl, source: imageSource } = await resolveArticleImage(item, log);
-  const imageUrl = await storeOriginalArticleImage(supabase, originalImageUrl, item.title, log);
-
-  log("info", "Resolved original article image", {
-    source: sourceName,
-    title: item.title,
-    imageSource,
-    imageUrl: (imageUrl || "").slice(0, 120)
-  });
-
-  // Pass full extracted source text (not just headline) so Gemini can write
-  // a real Urdu article body — see fetcher.js + ai_agent.js.
+  // AI first so category can drive unique stock fallbacks when no original
+  // article image exists. Prefer real RSS/og images; never reuse one shared Unsplash.
   const aiResult = await analyzeNews(
     {
       title: item.title,
@@ -352,6 +340,20 @@ async function processItem(item, sourceName) {
     source: sourceName,
     title: item.title,
     bodyLength: aiResult.article?.length || 0
+  });
+
+  const { imageUrl: originalImageUrl, source: imageSource } = await resolveArticleImage(item, log, {
+    category: aiResult.category,
+    sourceName
+  });
+  const imageUrl = await storeOriginalArticleImage(supabase, originalImageUrl, item.title, log);
+
+  log("info", "Resolved article image", {
+    source: sourceName,
+    title: item.title,
+    imageSource,
+    category: aiResult.category,
+    imageUrl: (imageUrl || "").slice(0, 120)
   });
 
   const newsId = await saveNews(item, sourceName, aiResult, imageUrl);
