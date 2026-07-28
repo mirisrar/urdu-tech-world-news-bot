@@ -9,9 +9,8 @@
 
 import Parser from "rss-parser";
 import {
-  isLegacySharedFallback,
   LEGACY_SHARED_FALLBACK_IMAGE,
-  pickUniqueFallbackImage
+  pickUniqueFallbackImageDetailed
 } from "./fallbackImages.js";
 
 const parser = new Parser({
@@ -331,23 +330,29 @@ export async function resolveArticleImage(item, log = () => {}, options = {}) {
     }
   }
 
-  const placeholder = pickUniqueFallbackImage({
+  const picked = pickUniqueFallbackImageDetailed({
     title: item.title,
     link: item.link,
     category: options.category,
     sourceName: options.sourceName
   });
 
-  log("info", "No original article image — using unique category fallback", {
+  log("info", "No original article image — using topic-relevant category fallback", {
     title: item.title,
-    category: options.category || null,
-    imageUrl: placeholder.slice(0, 100)
+    aiCategory: options.category || null,
+    fallbackCategory: picked.category,
+    via: picked.via,
+    imageUrl: picked.imageUrl.slice(0, 100)
   });
 
-  return { imageUrl: placeholder, source: "placeholder" };
+  return { imageUrl: picked.imageUrl, source: "placeholder" };
 }
 
-export { isLegacySharedFallback, pickUniqueFallbackImage };
+export {
+  isLegacySharedFallback,
+  pickUniqueFallbackImageDetailed
+} from "./fallbackImages.js";
+export { pickUniqueFallbackImage } from "./fallbackImages.js";
 
 /**
  * Pick the longest useful text blob from common RSS item fields.

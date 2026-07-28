@@ -41,7 +41,8 @@ export const RESPONSE_SCHEMA = {
   properties: {
     category: {
       type: "STRING",
-      description: "Short English category label, e.g. Technology, World, Sports, Business, Politics, AI"
+      description:
+        "One English category from this list only: Technology, AI, World, Sports, Business, Politics, Entertainment, Health, Education, Pakistan"
     },
     title_urdu: {
       type: "STRING",
