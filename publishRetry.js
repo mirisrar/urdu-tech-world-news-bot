@@ -8,6 +8,11 @@
 
 import { listConfiguredChannels, publishAll } from "./publishers/index.js";
 import { canAttemptFacebook } from "./publishers/facebookThrottle.js";
+import {
+  wasFacebookPosted,
+  markFacebookPosted,
+  getFacebookPostedId
+} from "./publishState.js";
 
 const CHANNEL_ID_COLUMN = {
   facebook: "fb_post_id",
@@ -125,15 +130,31 @@ export async function retryPendingPublishes(supabase, updatePublishStatus, log, 
       continue;
     }
 
-    // Don't burn the queue once Facebook's per-run quota is used — leave
-    // remaining FB rows for the next cron (~5 min later).
     let channels = missing;
-    if (missing.includes("facebook") && !canAttemptFacebook()) {
-      channels = missing.filter((name) => name !== "facebook");
-      if (channels.length === 0) {
-        skipped++;
-        continue;
+
+    // Cross-run dedupe: if we already posted this newsId to Facebook (file
+    // state) but DB fb_post_id was never saved, do NOT post again.
+    if (channels.includes("facebook") && wasFacebookPosted(row.id)) {
+      const priorId = getFacebookPostedId(row.id);
+      if (priorId) {
+        await updatePublishStatus(row.id, { facebook: { published: true, id: priorId } });
       }
+      channels = channels.filter((name) => name !== "facebook");
+      log("info", "Skipping Facebook retry — already posted (publish state)", {
+        newsId: row.id,
+        priorId: priorId || null
+      });
+    }
+
+    // Don't burn the queue once Facebook's per-run quota is used — leave
+    // remaining FB rows for the next cron.
+    if (channels.includes("facebook") && !canAttemptFacebook()) {
+      channels = channels.filter((name) => name !== "facebook");
+    }
+
+    if (channels.length === 0) {
+      skipped++;
+      continue;
     }
 
     try {
@@ -144,10 +165,15 @@ export async function retryPendingPublishes(supabase, updatePublishStatus, log, 
           facebookPost: row.facebook_post || row.urdu_summary || row.urdu_title,
           hashtags: row.hashtags || "",
           imageUrl: row.image_url || "",
-          sourceUrl: row.url || ""
+          sourceUrl: row.url || "",
+          newsId: row.id
         },
         { onlyChannels: channels }
       );
+
+      if (results.facebook?.published && results.facebook.id) {
+        markFacebookPosted(row.id, results.facebook.id);
+      }
 
       const anyOk = Object.values(results).some((r) => r.published);
       if (anyOk) {

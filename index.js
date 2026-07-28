@@ -12,6 +12,13 @@ import {
 import { analyzeNews, PROMPT_VERSION } from "./ai_agent.js";
 import { matchesAnyTitle, normalizeTitle } from "./dedupe.js";
 import { retryPendingPublishes } from "./publishRetry.js";
+import {
+  loadPublishState,
+  persistPublishState,
+  wasFacebookPosted,
+  markFacebookPosted,
+  getFacebookPostedId
+} from "./publishState.js";
 
 // Phase 6: the website (Nexora News Urdu) now reads the `news` table
 // directly from the browser using the Supabase JS SDK + SUPABASE_ANON_KEY.
@@ -30,8 +37,8 @@ const supabaseWriteKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SU
 if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
   console.log(
     "[WARN] SUPABASE_SERVICE_ROLE_KEY is not set - falling back to SUPABASE_ANON_KEY for bot writes. " +
-      "This will break once the website's read-only RLS policy is applied (see DATABASE_SCHEMA.md). " +
-      "Add SUPABASE_SERVICE_ROLE_KEY (Supabase dashboard -> Settings -> API) as soon as possible."
+      "Under website RLS (anon SELECT-only), the bot CANNOT save fb_post_id — that causes DUPLICATE Facebook posts. " +
+      "Add SUPABASE_SERVICE_ROLE_KEY from Supabase → Settings → API as a GitHub Actions secret NOW."
   );
 }
 
@@ -249,19 +256,42 @@ async function updatePublishStatus(newsId, publishResults) {
   if (publishResults.x?.published) updateRow.x_post_id = publishResults.x.id;
 
   if (Object.keys(updateRow).length === 0) {
-    return;
+    return { saved: false, reason: "nothing_to_save" };
   }
   updateRow.published_at = new Date().toISOString();
 
   try {
-    await writeWithColumnFallback(updateRow, (currentRow) =>
-      supabase.from("news").update(currentRow).eq("id", newsId).select("id").single()
-    );
+    await writeWithColumnFallback(updateRow, async (currentRow) => {
+      // Avoid .single() — 0-row updates (common under anon+RLS) throw
+      // "Cannot coerce the result to a single JSON object" and hide the real issue.
+      const result = await supabase.from("news").update(currentRow).eq("id", newsId).select("id");
+
+      if (result.error) {
+        return result;
+      }
+
+      if (result.data && result.data.length > 0) {
+        return { data: result.data[0], error: null };
+      }
+
+      // UPDATE matched 0 rows (almost always RLS blocking anon updates).
+      return {
+        data: null,
+        error: {
+          message:
+            `Publish status update matched 0 rows for id=${newsId}. ` +
+            "Add SUPABASE_SERVICE_ROLE_KEY (bypasses RLS) or the bot cannot save fb_post_id " +
+            "and will re-post the same stories to Facebook."
+        }
+      };
+    });
+    return { saved: true };
   } catch (error) {
     log("warn", "Failed to record publish status (article itself was saved fine)", {
       newsId,
       message: error.message
     });
+    return { saved: false, reason: error.message };
   }
 }
 
@@ -275,14 +305,36 @@ async function updatePublishStatus(newsId, publishResults) {
  */
 async function publishAndRecord(newsId, item, sourceName, aiResult, imageUrl) {
   try {
-    const results = await publishAll({
-      urduTitle: aiResult.urduTitle,
-      urduSummary: aiResult.urduSummary,
-      facebookPost: aiResult.facebookPost,
-      hashtags: aiResult.hashtags,
-      imageUrl,
-      sourceUrl: item.link
-    });
+    const skipFacebook = wasFacebookPosted(newsId);
+    const results = await publishAll(
+      {
+        urduTitle: aiResult.urduTitle,
+        urduSummary: aiResult.urduSummary,
+        facebookPost: aiResult.facebookPost,
+        hashtags: aiResult.hashtags,
+        imageUrl,
+        sourceUrl: item.link,
+        newsId
+      },
+      skipFacebook ? { onlyChannels: ["telegram", "whatsapp", "x"] } : undefined
+    );
+
+    if (skipFacebook) {
+      results.facebook = {
+        published: false,
+        skipped: true,
+        reason: "already_posted_state"
+      };
+      // Best-effort backfill DB if we have a stored post id.
+      const priorId = getFacebookPostedId(newsId);
+      if (priorId) {
+        await updatePublishStatus(newsId, { facebook: { published: true, id: priorId } });
+      }
+    }
+
+    if (results.facebook?.published && results.facebook.id) {
+      markFacebookPosted(newsId, results.facebook.id);
+    }
 
     const summary = Object.entries(results)
       .filter(([, result]) => !result.skipped || result.reason)
@@ -505,12 +557,14 @@ async function collectItems() {
 
 async function run() {
   const startedAt = Date.now();
+  loadPublishState(log);
   log("info", `Starting run (AI prompt v${PROMPT_VERSION})`, {
     maxItemsPerSource: MAX_ITEMS_PER_SOURCE,
     maxItemsPerRun: MAX_ITEMS_PER_RUN,
     aiCallSpacingMs: AI_CALL_SPACING_MS,
     facebookMaxPostsPerRun: Number.parseInt(process.env.FACEBOOK_MAX_POSTS_PER_RUN || "12", 10) || 12,
-    facebookPostIntervalMs: Number.parseInt(process.env.FACEBOOK_POST_INTERVAL_MS || "300000", 10) || 300000
+    facebookPostIntervalMs: Number.parseInt(process.env.FACEBOOK_POST_INTERVAL_MS || "300000", 10) || 300000,
+    hasServiceRoleKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY)
   });
 
   const candidates = await collectItems();
@@ -582,6 +636,8 @@ async function run() {
     durationMs: summary.durationMs,
     publishRetry
   });
+
+  persistPublishState(log);
 
   // Phase 8: Telegram health alert (fail-soft — never breaks the run).
   await sendRunAlert(summary, log);

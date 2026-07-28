@@ -20,6 +20,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Persist Facebook "already posted" markers across runs. Needed when
+      # fb_post_id cannot be written (missing SUPABASE_SERVICE_ROLE_KEY / RLS)
+      # so publish-retry does not re-post the same stories.
+      - uses: actions/cache@v4
+        with:
+          path: .bot-publish-state
+          key: bot-publish-state-${{ github.run_id }}
+          restore-keys: |
+            bot-publish-state-
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -30,10 +40,11 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          # Phase 6: required once the website's public read-only RLS policy
-          # is applied — the bot needs this to keep writing (see DATABASE_SCHEMA.md).
+          # REQUIRED for Facebook dedupe: without this, RLS blocks fb_post_id
+          # updates and the same posts get published again every run.
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          BOT_PUBLISH_STATE_DIR: .bot-publish-state
           MAX_ITEMS_PER_SOURCE: "25"
           MAX_ITEMS_PER_RUN: "40"
           AI_CALL_SPACING_MS: "1000"
