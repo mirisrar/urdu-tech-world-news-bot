@@ -9,7 +9,6 @@
 
 import Parser from "rss-parser";
 import {
-  isLegacySharedFallback,
   LEGACY_SHARED_FALLBACK_IMAGE,
   pickUniqueFallbackImageDetailed
 } from "./fallbackImages.js";
