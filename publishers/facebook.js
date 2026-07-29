@@ -8,6 +8,10 @@
  * - FACEBOOK_PAUSE_UNTIL — hard pause (spam cool-down)
  * - FACEBOOK_MAX_POSTS_PER_DAY (default 6) + FACEBOOK_MIN_GAP_MS (default 4h)
  * - FACEBOOK_MAX_POSTS_PER_RUN (default 1) so one job cannot burst
+ *
+ * Website link (required on every post when configured):
+ * - WEBSITE_BASE_URL=https://your-domain.com
+ * - WEBSITE_ARTICLE_PATH=/article.html?id={id}  (optional template)
  */
 
 import {
@@ -51,24 +55,65 @@ function normalizeHashtags(hashtags) {
 }
 
 /**
- * Append hashtags to the Facebook message when missing from the post body.
+ * Build the Nexora website article URL for a saved news row.
+ *
+ * @param {string|number|undefined|null} newsId
+ * @returns {string} absolute URL, or "" if WEBSITE_BASE_URL / id missing
+ */
+export function buildWebsiteArticleUrl(newsId) {
+  const base = String(process.env.WEBSITE_BASE_URL || "")
+    .trim()
+    .replace(/\/+$/, "");
+  if (!base || newsId === null || newsId === undefined || newsId === "") {
+    return "";
+  }
+
+  const pathTemplate = String(
+    process.env.WEBSITE_ARTICLE_PATH || "/article.html?id={id}"
+  ).trim();
+
+  const path = pathTemplate.includes("{id}")
+    ? pathTemplate.replaceAll("{id}", encodeURIComponent(String(newsId)))
+    : `${pathTemplate}${pathTemplate.includes("?") ? "&" : "?"}id=${encodeURIComponent(String(newsId))}`;
+
+  if (/^https?:\/\//i.test(path)) {
+    return path;
+  }
+
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return `${base}${normalizedPath}`;
+}
+
+/**
+ * Build the Facebook caption: post text + hashtags + website article link.
  * @param {string} facebookPost
  * @param {string|string[]|undefined|null} hashtags
+ * @param {string} [websiteUrl]
  * @returns {string}
  */
-function buildFacebookMessage(facebookPost, hashtags) {
-  const message = String(facebookPost || "").trim();
+export function buildFacebookMessage(facebookPost, hashtags, websiteUrl = "") {
+  let message = String(facebookPost || "").trim();
   const tagLine = normalizeHashtags(hashtags);
-  if (!tagLine) return message;
+  const siteLink = String(websiteUrl || "").trim();
 
-  // Skip append if the post already ends with / contains the same tag set.
-  const messageLower = message.toLowerCase();
-  const allPresent = tagLine
-    .split(/\s+/)
-    .every((tag) => messageLower.includes(tag.toLowerCase()));
-  if (allPresent) return message;
+  if (tagLine) {
+    const messageLower = message.toLowerCase();
+    const allPresent = tagLine
+      .split(/\s+/)
+      .every((tag) => messageLower.includes(tag.toLowerCase()));
+    if (!allPresent) {
+      message = message ? `${message}\n\n${tagLine}` : tagLine;
+    }
+  }
 
-  return `${message}\n\n${tagLine}`;
+  if (siteLink) {
+    // Avoid duplicating if the AI post already ends with the same URL.
+    if (!message.includes(siteLink)) {
+      message = message ? `${message}\n\n${siteLink}` : siteLink;
+    }
+  }
+
+  return message;
 }
 
 /**
@@ -83,11 +128,20 @@ function buildFacebookMessage(facebookPost, hashtags) {
  * @param {string} payload.facebookPost - Ready-to-publish Urdu post text.
  * @param {string|string[]} [payload.hashtags] - Hashtags appended to the post.
  * @param {string} [payload.imageUrl] - Remote image URL to attach.
- * @param {string} [payload.sourceUrl] - Original article URL (used as `link` for text-only posts).
- * @returns {Promise<{ published: true, id: string }>}
+ * @param {string} [payload.sourceUrl] - Original publisher URL (fallback link only).
+ * @param {string|number} [payload.newsId] - Supabase news id for website URL.
+ * @param {string} [payload.websiteUrl] - Prebuilt website article URL (optional).
+ * @returns {Promise<{ published: true, id: string }|{ published: false, skipped: true, reason: string }>}
  * @throws {Error} If required env vars are missing, the request fails, or Facebook returns an error.
  */
-export async function publishToFacebook({ facebookPost, hashtags, imageUrl, sourceUrl }) {
+export async function publishToFacebook({
+  facebookPost,
+  hashtags,
+  imageUrl,
+  sourceUrl,
+  newsId,
+  websiteUrl
+}) {
   const pageId = process.env.FACEBOOK_PAGE_ID;
   const accessToken = process.env.FACEBOOK_PAGE_ACCESS_TOKEN;
 
@@ -102,7 +156,8 @@ export async function publishToFacebook({ facebookPost, hashtags, imageUrl, sour
     return { published: false, skipped: true, reason: skipReason };
   }
 
-  const message = buildFacebookMessage(facebookPost, hashtags);
+  const siteArticleUrl = String(websiteUrl || "").trim() || buildWebsiteArticleUrl(newsId);
+  const message = buildFacebookMessage(facebookPost, hashtags, siteArticleUrl);
   if (!message) {
     throw new Error("publishToFacebook: 'facebookPost' text is required");
   }
@@ -114,6 +169,9 @@ export async function publishToFacebook({ facebookPost, hashtags, imageUrl, sour
     return { published: false, skipped: true, reason: slot.reason };
   }
 
+  // Prefer the website article URL for Graph `link`; fall back to source.
+  const linkUrl = siteArticleUrl || String(sourceUrl || "").trim();
+
   const usePhoto = Boolean(imageUrl);
   const endpoint = usePhoto
     ? `${FACEBOOK_GRAPH_BASE_URL}/${pageId}/photos`
@@ -122,11 +180,12 @@ export async function publishToFacebook({ facebookPost, hashtags, imageUrl, sour
   const params = new URLSearchParams({ access_token: accessToken });
   if (usePhoto) {
     params.set("url", imageUrl);
+    // Caption always includes the website link at the bottom when configured.
     params.set("caption", message);
   } else {
     params.set("message", message);
-    if (sourceUrl) {
-      params.set("link", sourceUrl);
+    if (linkUrl) {
+      params.set("link", linkUrl);
     }
   }
 
