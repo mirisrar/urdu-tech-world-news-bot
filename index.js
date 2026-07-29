@@ -23,6 +23,7 @@ import {
   getFacebookThrottleConfig,
   getFacebookBlockReason
 } from "./publishers/facebookThrottle.js";
+import { fetchTopicStockImage, hasStockImageProvider } from "./stockImage.js";
 
 // Phase 6: the website (Nexora News Urdu) now reads the `news` table
 // directly from the browser using the Supabase JS SDK + SUPABASE_ANON_KEY.
@@ -113,11 +114,10 @@ const TITLE_SIMILARITY_THRESHOLD = Number.parseFloat(
   process.env.TITLE_SIMILARITY_THRESHOLD || "0.72"
 );
 
-// If true (default), skip any item whose real article cover cannot be found
-// via RSS media / enclosure / og:image / twitter:image / publisher page.
-// Stock Unsplash fallbacks are NOT used for new inserts in that mode.
-const REQUIRE_ORIGINAL_ARTICLE_IMAGE = !["0", "false", "no", "off"].includes(
-  String(process.env.REQUIRE_ORIGINAL_ARTICLE_IMAGE || "true").toLowerCase()
+// When no original article cover exists: try Unsplash/Pexels by topic.
+// If that also fails (or no API key), skip the item — never use a fixed default image.
+const SKIP_IF_NO_TOPIC_IMAGE = !["0", "false", "no", "off"].includes(
+  String(process.env.SKIP_IF_NO_TOPIC_IMAGE || "true").toLowerCase()
 );
 
 function log(level, message, meta) {
@@ -388,22 +388,79 @@ async function processItem(item, sourceName) {
     return "skipped";
   }
 
-  // Resolve the REAL article cover first (RSS / og:image / publisher page).
-  // If none exists and REQUIRE_ORIGINAL_ARTICLE_IMAGE is on, skip entirely —
-  // no stock placeholder, no Gemini spend, no social post.
+  // 1) Real article cover (RSS / og:image / publisher page).
+  // 2) Else dynamic Unsplash/Pexels image for the topic/category.
+  // 3) Else skip — never a fixed default / random stock URL.
   let { imageUrl, source: imageSource } = await resolveArticleImage(item, log, {
     sourceName,
     allowPlaceholder: false
   });
 
-  if (REQUIRE_ORIGINAL_ARTICLE_IMAGE && imageSource !== "rss" && imageSource !== "meta") {
-    log("info", "Skipping item — no original article photo found", {
+  if (imageSource === "none") {
+    if (!hasStockImageProvider()) {
+      log("info", "Skipping item — no article photo and no Unsplash/Pexels API key", {
+        source: sourceName,
+        title: item.title,
+        url: item.link
+      });
+      return "skipped";
+    }
+
+    // Light AI category first so the stock search matches the topic.
+    const aiPreview = await analyzeNews(
+      {
+        title: item.title,
+        rawContent: item.rawContent || "",
+        description: item.description || ""
+      },
+      log
+    );
+
+    const stock = await fetchTopicStockImage(
+      {
+        title: item.title,
+        link: item.link,
+        category: aiPreview.category,
+        sourceName
+      },
+      log
+    );
+
+    if (!stock?.imageUrl) {
+      if (SKIP_IF_NO_TOPIC_IMAGE) {
+        log("info", "Skipping item — no article photo and topic stock image fetch failed", {
+          source: sourceName,
+          title: item.title,
+          category: aiPreview.category
+        });
+        return "skipped";
+      }
+      log("warn", "No topic stock image — skipping because placeholders are disabled", {
+        title: item.title
+      });
+      return "skipped";
+    }
+
+    // Continue with AI result we already have (avoid a second Gemini call).
+    const imageStored = await storeOriginalArticleImage(
+      supabase,
+      stock.imageUrl,
+      item.title,
+      log
+    );
+
+    log("info", "Resolved article image", {
       source: sourceName,
       title: item.title,
-      url: item.link,
-      imageSource
+      imageSource: stock.provider,
+      category: aiPreview.category,
+      imageUrl: (imageStored || "").slice(0, 120)
     });
-    return "skipped";
+
+    const newsId = await saveNews(item, sourceName, aiPreview, imageStored);
+    log("info", "News saved with full AI analysis", { title: item.title, source: sourceName });
+    await publishAndRecord(newsId, item, sourceName, aiPreview, imageStored);
+    return "processed";
   }
 
   const aiResult = await analyzeNews(
@@ -420,17 +477,6 @@ async function processItem(item, sourceName) {
     title: item.title,
     bodyLength: aiResult.article?.length || 0
   });
-
-  // Optional legacy path: stock topic fallback only when explicitly allowed.
-  if (imageSource === "none") {
-    const fallback = await resolveArticleImage(item, log, {
-      category: aiResult.category,
-      sourceName,
-      allowPlaceholder: true
-    });
-    imageUrl = fallback.imageUrl;
-    imageSource = fallback.imageSource;
-  }
 
   imageUrl = await storeOriginalArticleImage(supabase, imageUrl, item.title, log);
 
@@ -602,7 +648,8 @@ async function run() {
     facebookMinGapMs: fbCfg.minGapMs,
     facebookPauseUntil: fbCfg.pauseUntilIso || null,
     facebookBlocked: getFacebookBlockReason(),
-    requireOriginalArticleImage: REQUIRE_ORIGINAL_ARTICLE_IMAGE,
+    skipIfNoTopicImage: SKIP_IF_NO_TOPIC_IMAGE,
+    hasStockImageProvider: hasStockImageProvider(),
     hasServiceRoleKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY)
   });
 

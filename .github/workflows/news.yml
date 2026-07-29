@@ -45,9 +45,12 @@ jobs:
           MAX_ITEMS_PER_SOURCE: "25"
           MAX_ITEMS_PER_RUN: "40"
           AI_CALL_SPACING_MS: "1000"
-          # Skip news when no real article cover exists (RSS/og/publisher).
-          # No stock Unsplash placeholders for new inserts.
-          REQUIRE_ORIGINAL_ARTICLE_IMAGE: "true"
+          # No fixed default image. If article has no cover → Unsplash/Pexels
+          # by topic/category; if that fails → skip the news.
+          SKIP_IF_NO_TOPIC_IMAGE: "true"
+          STOCK_IMAGE_PROVIDER: "auto"
+          UNSPLASH_ACCESS_KEY: ${{ secrets.UNSPLASH_ACCESS_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           # Facebook cool-down after spam detect: no posts for 72h, then
           # max 6 posts/day with ~4h gaps (1 post per Actions run).
           FACEBOOK_PAUSE_UNTIL: "2026-08-01T10:43:20Z"
