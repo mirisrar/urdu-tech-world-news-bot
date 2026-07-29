@@ -113,6 +113,13 @@ const TITLE_SIMILARITY_THRESHOLD = Number.parseFloat(
   process.env.TITLE_SIMILARITY_THRESHOLD || "0.72"
 );
 
+// If true (default), skip any item whose real article cover cannot be found
+// via RSS media / enclosure / og:image / twitter:image / publisher page.
+// Stock Unsplash fallbacks are NOT used for new inserts in that mode.
+const REQUIRE_ORIGINAL_ARTICLE_IMAGE = !["0", "false", "no", "off"].includes(
+  String(process.env.REQUIRE_ORIGINAL_ARTICLE_IMAGE || "true").toLowerCase()
+);
+
 function log(level, message, meta) {
   const line = `[${level.toUpperCase()}] ${message}`;
   if (meta !== undefined) {
@@ -381,8 +388,24 @@ async function processItem(item, sourceName) {
     return "skipped";
   }
 
-  // AI first so category can drive unique stock fallbacks when no original
-  // article image exists. Prefer real RSS/og images; never reuse one shared Unsplash.
+  // Resolve the REAL article cover first (RSS / og:image / publisher page).
+  // If none exists and REQUIRE_ORIGINAL_ARTICLE_IMAGE is on, skip entirely —
+  // no stock placeholder, no Gemini spend, no social post.
+  const { imageUrl: originalImageUrl, source: imageSource } = await resolveArticleImage(item, log, {
+    sourceName,
+    allowPlaceholder: !REQUIRE_ORIGINAL_ARTICLE_IMAGE
+  });
+
+  if (REQUIRE_ORIGINAL_ARTICLE_IMAGE && imageSource !== "rss" && imageSource !== "meta") {
+    log("info", "Skipping item — no original article photo found", {
+      source: sourceName,
+      title: item.title,
+      url: item.link,
+      imageSource
+    });
+    return "skipped";
+  }
+
   const aiResult = await analyzeNews(
     {
       title: item.title,
@@ -398,16 +421,25 @@ async function processItem(item, sourceName) {
     bodyLength: aiResult.article?.length || 0
   });
 
-  const { imageUrl: originalImageUrl, source: imageSource } = await resolveArticleImage(item, log, {
-    category: aiResult.category,
-    sourceName
-  });
-  const imageUrl = await storeOriginalArticleImage(supabase, originalImageUrl, item.title, log);
+  // If placeholders are allowed, re-resolve with AI category for better stock pick.
+  let imageUrl = originalImageUrl;
+  let finalImageSource = imageSource;
+  if (!REQUIRE_ORIGINAL_ARTICLE_IMAGE && imageSource === "placeholder") {
+    const again = await resolveArticleImage(item, log, {
+      category: aiResult.category,
+      sourceName,
+      allowPlaceholder: true
+    });
+    imageUrl = again.imageUrl;
+    finalImageSource = again.imageSource;
+  }
+
+  imageUrl = await storeOriginalArticleImage(supabase, imageUrl, item.title, log);
 
   log("info", "Resolved article image", {
     source: sourceName,
     title: item.title,
-    imageSource,
+    imageSource: finalImageSource,
     category: aiResult.category,
     imageUrl: (imageUrl || "").slice(0, 120)
   });
@@ -572,6 +604,7 @@ async function run() {
     facebookMinGapMs: fbCfg.minGapMs,
     facebookPauseUntil: fbCfg.pauseUntilIso || null,
     facebookBlocked: getFacebookBlockReason(),
+    requireOriginalArticleImage: REQUIRE_ORIGINAL_ARTICLE_IMAGE,
     hasServiceRoleKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY)
   });
 
