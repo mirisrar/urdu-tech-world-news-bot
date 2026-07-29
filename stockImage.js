@@ -9,8 +9,7 @@
  * STOCK_IMAGE_PROVIDER = auto | unsplash | pexels  (default auto)
  */
 
-import { resolveFallbackCategory } from "./fallbackImages.js";
-import { stableHash } from "./fallbackImages.js";
+import { resolveFallbackCategory, stableHash } from "./fallbackImages.js";
 
 const UNSPLASH_SEARCH_URL = "https://api.unsplash.com/search/photos";
 const PEXELS_SEARCH_URL = "https://api.pexels.com/v1/search";
