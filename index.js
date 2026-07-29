@@ -23,6 +23,7 @@ import {
   getFacebookThrottleConfig,
   getFacebookBlockReason
 } from "./publishers/facebookThrottle.js";
+import { fetchTopicStockImage, hasStockImageProvider } from "./stockImage.js";
 
 // Phase 6: the website (Nexora News Urdu) now reads the `news` table
 // directly from the browser using the Supabase JS SDK + SUPABASE_ANON_KEY.
@@ -111,6 +112,12 @@ const PUBLISH_RETRY_LIMIT = envInt("PUBLISH_RETRY_LIMIT", 10);
 const PUBLISH_RETRY_LOOKBACK_HOURS = envInt("PUBLISH_RETRY_LOOKBACK_HOURS", 48);
 const TITLE_SIMILARITY_THRESHOLD = Number.parseFloat(
   process.env.TITLE_SIMILARITY_THRESHOLD || "0.72"
+);
+
+// When no original article cover exists: try Unsplash/Pexels by topic.
+// If that also fails (or no API key), skip the item — never use a fixed default image.
+const SKIP_IF_NO_TOPIC_IMAGE = !["0", "false", "no", "off"].includes(
+  String(process.env.SKIP_IF_NO_TOPIC_IMAGE || "true").toLowerCase()
 );
 
 function log(level, message, meta) {
@@ -381,8 +388,81 @@ async function processItem(item, sourceName) {
     return "skipped";
   }
 
-  // AI first so category can drive unique stock fallbacks when no original
-  // article image exists. Prefer real RSS/og images; never reuse one shared Unsplash.
+  // 1) Real article cover (RSS / og:image / publisher page).
+  // 2) Else dynamic Unsplash/Pexels image for the topic/category.
+  // 3) Else skip — never a fixed default / random stock URL.
+  let { imageUrl, source: imageSource } = await resolveArticleImage(item, log, {
+    sourceName,
+    allowPlaceholder: false
+  });
+
+  if (imageSource === "none") {
+    if (!hasStockImageProvider()) {
+      log("info", "Skipping item — no article photo and no Unsplash/Pexels API key", {
+        source: sourceName,
+        title: item.title,
+        url: item.link
+      });
+      return "skipped";
+    }
+
+    // Light AI category first so the stock search matches the topic.
+    const aiPreview = await analyzeNews(
+      {
+        title: item.title,
+        rawContent: item.rawContent || "",
+        description: item.description || ""
+      },
+      log
+    );
+
+    const stock = await fetchTopicStockImage(
+      {
+        title: item.title,
+        link: item.link,
+        category: aiPreview.category,
+        sourceName
+      },
+      log
+    );
+
+    if (!stock?.imageUrl) {
+      if (SKIP_IF_NO_TOPIC_IMAGE) {
+        log("info", "Skipping item — no article photo and topic stock image fetch failed", {
+          source: sourceName,
+          title: item.title,
+          category: aiPreview.category
+        });
+        return "skipped";
+      }
+      log("warn", "No topic stock image — skipping because placeholders are disabled", {
+        title: item.title
+      });
+      return "skipped";
+    }
+
+    // Continue with AI result we already have (avoid a second Gemini call).
+    const imageStored = await storeOriginalArticleImage(
+      supabase,
+      stock.imageUrl,
+      item.title,
+      log
+    );
+
+    log("info", "Resolved article image", {
+      source: sourceName,
+      title: item.title,
+      imageSource: stock.provider,
+      category: aiPreview.category,
+      imageUrl: (imageStored || "").slice(0, 120)
+    });
+
+    const newsId = await saveNews(item, sourceName, aiPreview, imageStored);
+    log("info", "News saved with full AI analysis", { title: item.title, source: sourceName });
+    await publishAndRecord(newsId, item, sourceName, aiPreview, imageStored);
+    return "processed";
+  }
+
   const aiResult = await analyzeNews(
     {
       title: item.title,
@@ -398,11 +478,7 @@ async function processItem(item, sourceName) {
     bodyLength: aiResult.article?.length || 0
   });
 
-  const { imageUrl: originalImageUrl, source: imageSource } = await resolveArticleImage(item, log, {
-    category: aiResult.category,
-    sourceName
-  });
-  const imageUrl = await storeOriginalArticleImage(supabase, originalImageUrl, item.title, log);
+  imageUrl = await storeOriginalArticleImage(supabase, imageUrl, item.title, log);
 
   log("info", "Resolved article image", {
     source: sourceName,
@@ -572,6 +648,8 @@ async function run() {
     facebookMinGapMs: fbCfg.minGapMs,
     facebookPauseUntil: fbCfg.pauseUntilIso || null,
     facebookBlocked: getFacebookBlockReason(),
+    skipIfNoTopicImage: SKIP_IF_NO_TOPIC_IMAGE,
+    hasStockImageProvider: hasStockImageProvider(),
     hasServiceRoleKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY)
   });
 

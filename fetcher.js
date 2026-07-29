@@ -292,8 +292,8 @@ export function extractPublisherLinksFromHtml(html) {
  *   description?: string
  * }} item
  * @param {(level: string, message: string, meta?: object) => void} [log]
- * @param {{ category?: string, sourceName?: string }} [options]
- * @returns {Promise<{ imageUrl: string, source: "rss"|"meta"|"placeholder" }>}
+ * @param {{ category?: string, sourceName?: string, allowPlaceholder?: boolean }} [options]
+ * @returns {Promise<{ imageUrl: string, source: "rss"|"meta"|"placeholder"|"none" }>}
  */
 export async function resolveArticleImage(item, log = () => {}, options = {}) {
   const candidates = [
@@ -328,6 +328,14 @@ export async function resolveArticleImage(item, log = () => {}, options = {}) {
     if (og) {
       return { imageUrl: og, source: "meta" };
     }
+  }
+
+  const allowPlaceholder = options.allowPlaceholder !== false;
+  if (!allowPlaceholder) {
+    log("info", "No original article image found (RSS/og/publisher) — no placeholder", {
+      title: item.title
+    });
+    return { imageUrl: "", source: "none" };
   }
 
   const picked = pickUniqueFallbackImageDetailed({
