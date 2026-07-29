@@ -4,14 +4,15 @@
  * Requires: FACEBOOK_PAGE_ID, FACEBOOK_PAGE_ACCESS_TOKEN
  * (a Page access token with the pages_manage_posts permission).
  *
- * Pacing: FACEBOOK_MAX_POSTS_PER_RUN posts per Actions job, waiting
- * FACEBOOK_POST_INTERVAL_MS (~5 min) between successes so the Page is
- * not flooded. GitHub cron alone is too unreliable for exact 5-minute firing.
+ * Pacing:
+ * - FACEBOOK_PAUSE_UNTIL — hard pause (spam cool-down)
+ * - FACEBOOK_MAX_POSTS_PER_DAY (default 6) + FACEBOOK_MIN_GAP_MS (default 4h)
+ * - FACEBOOK_MAX_POSTS_PER_RUN (default 1) so one job cannot burst
  */
 
 import {
-  canAttemptFacebook,
   consumeFacebookAttemptSlot,
+  getFacebookSkipReason,
   noteFacebookSuccess,
   waitForFacebookInterval
 } from "./facebookThrottle.js";
@@ -94,10 +95,11 @@ export async function publishToFacebook({ facebookPost, hashtags, imageUrl, sour
     throw new Error("FACEBOOK_PAGE_ID and FACEBOOK_PAGE_ACCESS_TOKEN must both be set");
   }
 
-  // Soft-skip when this run's Facebook quota is already used — caller treats
-  // skipped as "try again later" (publish retry / next cron), not a hard fail.
-  if (!canAttemptFacebook()) {
-    return { published: false, skipped: true, reason: "max_per_run" };
+  // Soft-skip when paused / daily cap / min gap / per-run quota — caller
+  // treats skipped as "try again later", not a hard fail.
+  const skipReason = getFacebookSkipReason();
+  if (skipReason) {
+    return { published: false, skipped: true, reason: skipReason };
   }
 
   const message = buildFacebookMessage(facebookPost, hashtags);

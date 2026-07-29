@@ -19,6 +19,10 @@ import {
   markFacebookPosted,
   getFacebookPostedId
 } from "./publishState.js";
+import {
+  getFacebookThrottleConfig,
+  getFacebookBlockReason
+} from "./publishers/facebookThrottle.js";
 
 // Phase 6: the website (Nexora News Urdu) now reads the `news` table
 // directly from the browser using the Supabase JS SDK + SUPABASE_ANON_KEY.
@@ -558,12 +562,16 @@ async function collectItems() {
 async function run() {
   const startedAt = Date.now();
   loadPublishState(log);
+  const fbCfg = getFacebookThrottleConfig();
   log("info", `Starting run (AI prompt v${PROMPT_VERSION})`, {
     maxItemsPerSource: MAX_ITEMS_PER_SOURCE,
     maxItemsPerRun: MAX_ITEMS_PER_RUN,
     aiCallSpacingMs: AI_CALL_SPACING_MS,
-    facebookMaxPostsPerRun: Number.parseInt(process.env.FACEBOOK_MAX_POSTS_PER_RUN || "12", 10) || 12,
-    facebookPostIntervalMs: Number.parseInt(process.env.FACEBOOK_POST_INTERVAL_MS || "300000", 10) || 300000,
+    facebookMaxPostsPerRun: fbCfg.maxPerRun,
+    facebookMaxPostsPerDay: fbCfg.maxPerDay,
+    facebookMinGapMs: fbCfg.minGapMs,
+    facebookPauseUntil: fbCfg.pauseUntilIso || null,
+    facebookBlocked: getFacebookBlockReason(),
     hasServiceRoleKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY)
   });
 
