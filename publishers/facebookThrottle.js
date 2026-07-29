@@ -74,7 +74,7 @@ export function getFacebookBlockReason(now = Date.now()) {
     return `paused_until_${pauseUntilIso || new Date(pauseUntilMs).toISOString()}_(~${hoursLeft}h)`;
   }
 
-  const cadence = getFacebookCadence();
+  const cadence = getFacebookCadence(now);
   if (cadence.count >= maxPerDay) {
     return `daily_cap_${maxPerDay}`;
   }

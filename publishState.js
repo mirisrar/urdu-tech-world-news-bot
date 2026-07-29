@@ -125,10 +125,12 @@ export function markFacebookPosted(newsId, postId = "") {
 
 /**
  * Snapshot of today's Facebook posting cadence (UTC day).
+ * @param {Date|number} [now]
  * @returns {{ day: string, count: number, lastSuccessAt: string }}
  */
-export function getFacebookCadence() {
-  const today = utcDayKey();
+export function getFacebookCadence(now = Date.now()) {
+  const at = now instanceof Date ? now : new Date(now);
+  const today = utcDayKey(at);
   if (facebookCadence.day !== today) {
     facebookCadence = {
       day: today,
