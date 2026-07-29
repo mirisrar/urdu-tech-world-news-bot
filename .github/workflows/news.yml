@@ -2,9 +2,9 @@ name: News Bot
 
 on:
   schedule:
-    # Catch-up every 30 minutes. Facebook cadence is enforced IN-RUN
-    # (1 post / FACEBOOK_POST_INTERVAL_MS) — GitHub */5 cron is too unreliable.
-    - cron: "*/30 * * * *"
+    # Every 4 hours — pairs with FACEBOOK_MAX_POSTS_PER_DAY=6 + MIN_GAP ~4h
+    # so the Page gets at most ~6 spaced posts/day after the pause ends.
+    - cron: "0 */4 * * *"
   workflow_dispatch:
 
 concurrency:
@@ -14,15 +14,12 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
-    # Allow in-run Facebook drip (e.g. 6 posts × 5 min) plus AI/collection.
-    timeout-minutes: 90
+    timeout-minutes: 60
 
     steps:
       - uses: actions/checkout@v4
 
-      # Persist Facebook "already posted" markers across runs. Needed when
-      # fb_post_id cannot be written (missing SUPABASE_SERVICE_ROLE_KEY / RLS)
-      # so publish-retry does not re-post the same stories.
+      # Persist Facebook posted-IDs + daily cadence across runs.
       - uses: actions/cache@v4
         with:
           path: .bot-publish-state
@@ -48,9 +45,13 @@ jobs:
           MAX_ITEMS_PER_SOURCE: "25"
           MAX_ITEMS_PER_RUN: "40"
           AI_CALL_SPACING_MS: "1000"
-          # Facebook drip: up to 6 posts per job, 5 minutes apart (no burst).
-          FACEBOOK_MAX_POSTS_PER_RUN: "6"
-          FACEBOOK_POST_INTERVAL_MS: "300000"
+          # Facebook cool-down after spam detect: no posts for 72h, then
+          # max 6 posts/day with ~4h gaps (1 post per Actions run).
+          FACEBOOK_PAUSE_UNTIL: "2026-08-01T10:43:20Z"
+          FACEBOOK_MAX_POSTS_PER_DAY: "6"
+          FACEBOOK_MAX_POSTS_PER_RUN: "1"
+          FACEBOOK_MIN_GAP_MS: "14400000"
+          FACEBOOK_POST_INTERVAL_MS: "0"
           # Phase 9 — title dedupe + DB publish retry (no Redis).
           TITLE_DEDUPE_LOOKBACK: "200"
           TITLE_SIMILARITY_THRESHOLD: "0.72"
