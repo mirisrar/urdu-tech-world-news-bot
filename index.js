@@ -391,9 +391,9 @@ async function processItem(item, sourceName) {
   // Resolve the REAL article cover first (RSS / og:image / publisher page).
   // If none exists and REQUIRE_ORIGINAL_ARTICLE_IMAGE is on, skip entirely —
   // no stock placeholder, no Gemini spend, no social post.
-  const { imageUrl: originalImageUrl, source: imageSource } = await resolveArticleImage(item, log, {
+  let { imageUrl, source: imageSource } = await resolveArticleImage(item, log, {
     sourceName,
-    allowPlaceholder: !REQUIRE_ORIGINAL_ARTICLE_IMAGE
+    allowPlaceholder: false
   });
 
   if (REQUIRE_ORIGINAL_ARTICLE_IMAGE && imageSource !== "rss" && imageSource !== "meta") {
@@ -421,17 +421,15 @@ async function processItem(item, sourceName) {
     bodyLength: aiResult.article?.length || 0
   });
 
-  // If placeholders are allowed, re-resolve with AI category for better stock pick.
-  let imageUrl = originalImageUrl;
-  let finalImageSource = imageSource;
-  if (!REQUIRE_ORIGINAL_ARTICLE_IMAGE && imageSource === "placeholder") {
-    const again = await resolveArticleImage(item, log, {
+  // Optional legacy path: stock topic fallback only when explicitly allowed.
+  if (imageSource === "none") {
+    const fallback = await resolveArticleImage(item, log, {
       category: aiResult.category,
       sourceName,
       allowPlaceholder: true
     });
-    imageUrl = again.imageUrl;
-    finalImageSource = again.imageSource;
+    imageUrl = fallback.imageUrl;
+    imageSource = fallback.imageSource;
   }
 
   imageUrl = await storeOriginalArticleImage(supabase, imageUrl, item.title, log);
@@ -439,7 +437,7 @@ async function processItem(item, sourceName) {
   log("info", "Resolved article image", {
     source: sourceName,
     title: item.title,
-    imageSource: finalImageSource,
+    imageSource,
     category: aiResult.category,
     imageUrl: (imageUrl || "").slice(0, 120)
   });
