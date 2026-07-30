@@ -11,8 +11,3 @@
 
 export const SUPABASE_URL = "https://YOUR-PROJECT.supabase.co";
 export const SUPABASE_ANON_KEY = "YOUR-ANON-PUBLIC-KEY";
-
-// Phase 10 SEO — used for absolute og:url / og:image / canonical.
-// Example: "https://nexora-news.vercel.app" (no trailing slash).
-export const SITE_ORIGIN = "https://YOUR-SITE-DOMAIN";
-export const SITE_NAME = "Nexora News Urdu";
