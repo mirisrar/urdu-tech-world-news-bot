@@ -308,24 +308,29 @@ Internal links / related news / performance
 
 ---
 
-## Phase 10 — SEO Foundation (Meta + Share) — 🔴 Critical
+## Phase 10 — SEO Foundation (Meta + Share) — 🔴 Critical (🟡 In progress — helpers shipped)
 
 **Kahan:** Nexora website (article + homepage), thoda `website-integration/` helpers.
 
-- [ ] Har article page pe:
+- [x] `website-integration/seo.js` — `buildArticleSeo` / `applyArticleSeo` / `applyPageSeo`
   - `<title>` = `seo_title` (fallback: `urdu_title`) + brand
   - `<meta name="description">` = `urdu_summary`
-  - Open Graph: `og:title`, `og:description`, `og:image`, `og:url`, `og:type=article`, `og:locale=ur_PK`
+  - Open Graph: `og:title`, `og:description`, `og:image`, `og:url`, `og:type`, `og:locale`
   - Twitter Card: `summary_large_image`
-- [ ] Canonical URL har article pe
-- [ ] `lang="ur"` + `dir="rtl"` consistently
-- [ ] Homepage / category pages pe bhi basic title + description
+  - Canonical URL
+  - `lang="ur"` + `dir="rtl"`
+- [x] Article + homepage examples wired (`examples/*-example.html`)
+- [x] `config.example.js` → `SITE_ORIGIN` + `SITE_NAME`
+- [ ] **Website repo:** `seo.js` copy + article/home pages pe `applyArticleSeo` / `applyPageSeo` call
 - [ ] Confirm DB mein `seo_title` persist ho raha hai  
   (`SELECT id, seo_title FROM news ORDER BY id DESC LIMIT 10;`)
+- [ ] Facebook Sharing Debugger se ek live article preview verify
 
 **Done criteria:** Kisi article ka “View Source” / Facebook Debugger / Twitter Card Validator sahi title, description, image dikhaye — empty ya sirf JS shell nahi.
 
 **Pehle yeh kyun:** Bina meta/OG ke baaki SEO half-blind rehta hai; social shares bhi weak lagte hain.
+
+**Note:** Helpers bot repo mein ready hain. Full crawler-proof OG (Debugger bina JS) ke liye Phase 13 rendering chahiye; pehle website pe `seo.js` wire karo.
 
 ---
 
@@ -417,7 +422,7 @@ Internal links / related news / performance
 
 | Phase | Focus | Priority | Status |
 |---|---|---|---|
-| Phase 10 — SEO Foundation (meta / OG) | Website | 🔴 Critical | ⬜ Not started |
+| Phase 10 — SEO Foundation (meta / OG) | Website | 🔴 Critical | 🟡 Helpers in bot repo; wire on live site |
 | Phase 11 — Sitemap + robots + GSC | Website / ops | 🔴 Critical | ⬜ Not started |
 | Phase 12 — Slugs + JSON-LD | Bot + website | 🟠 High | ⬜ Not started |
 | Phase 13 — Crawlability / rendering | Website | 🟠 High | ⬜ Not started |
