@@ -8,11 +8,6 @@
 <html lang="ur" dir="rtl">
   <head>
     <meta charset="UTF-8" />
-    <meta name="description" content="Nexora News Urdu — پاکستان اور دنیا کی تازہ ترین اردو خبریں" />
-    <meta property="og:type" content="website" />
-    <meta property="og:locale" content="ur_PK" />
-    <meta property="og:site_name" content="Nexora News Urdu" />
-    <meta name="twitter:card" content="summary_large_image" />
     <title>Nexora News Urdu</title>
   </head>
   <body>
@@ -45,8 +40,6 @@
       } from "../newsApi.js";
       import { subscribeToNewArticles } from "../realtime.js";
       import { formatRelativeTime, resolveImageUrl, excerpt, articleUrl } from "../utils.js";
-      import { applyPageSeo } from "../seo.js";
-      import * as siteConfig from "../config.js";
 
       function renderHero(article) {
         const el = document.getElementById("hero-news");
@@ -123,15 +116,6 @@
       });
 
       async function init() {
-        applyPageSeo(
-          {
-            title: "Nexora News Urdu",
-            description: "پاکستان اور دنیا کی تازہ ترین اردو خبریں — ٹیک، کاروبار، کھیل اور مزید۔",
-            path: "/"
-          },
-          { config: siteConfig }
-        );
-
         const [hero, breaking, trending] = await Promise.all([
           getHeroNews(),
           getBreakingNews(),

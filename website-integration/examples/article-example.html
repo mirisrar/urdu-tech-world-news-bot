@@ -1,14 +1,8 @@
 <!doctype html>
-<!-- Reference example only — Article Page wiring + Phase 10 SEO. -->
+<!-- Reference example only — Article Page wiring. -->
 <html lang="ur" dir="rtl">
   <head>
     <meta charset="UTF-8" />
-    <!-- Defaults replaced by applyArticleSeo() after the article loads. -->
-    <meta name="description" content="Nexora News Urdu — تازہ ترین اردو خبریں" />
-    <meta property="og:type" content="article" />
-    <meta property="og:locale" content="ur_PK" />
-    <meta property="og:site_name" content="Nexora News Urdu" />
-    <meta name="twitter:card" content="summary_large_image" />
     <title>خبر — Nexora News Urdu</title>
   </head>
   <body>
@@ -19,8 +13,6 @@
     <script type="module">
       import { getArticleById } from "../newsApi.js";
       import { formatRelativeTime, resolveImageUrl } from "../utils.js";
-      import { applyArticleSeo } from "../seo.js";
-      import * as siteConfig from "../config.js";
 
       function renderArticle(article) {
         const container = document.getElementById("article-container");
@@ -30,8 +22,9 @@
           return;
         }
 
-        // Phase 10: title + meta description + Open Graph + Twitter + canonical.
-        applyArticleSeo(article, { config: siteConfig });
+        // seo_title is distinct from urdu_title — use it for <title>/meta
+        // tags, and urdu_title as the on-page heading.
+        document.title = `${article.seo_title || article.urdu_title} — Nexora News Urdu`;
 
         container.innerHTML = `
           <img src="${resolveImageUrl(article.image_url)}" alt="${article.urdu_title}" />
