@@ -17,6 +17,7 @@ Website **koi webhook receive nahi karti** — yeh khud Supabase se seedha data 
 | `newsApi.js` | Sab data-fetching functions (hero, breaking, latest, trending, categories, search, single article) |
 | `realtime.js` | Live updates — naya article save hote hi callback fire hota hai |
 | `utils.js` | Presentation helpers (relative time, image fallback, excerpt, URL building) |
+| `seo.js` | **Phase 10** — title / meta description / Open Graph / Twitter / canonical |
 | `database/schema-align.sql` | **Zaroori** — Bot + Admin shared columns (`views`, `featured`, `reading_time`, nullable `source`/`url`, publish fields) |
 | `database/rls-policy.sql` | **Zaroori** — `anon` SELECT-only; `authenticated` (Admin) CRUD; Storage policies for `news-images` |
 | `examples/homepage-example.html` | Reference: hero + breaking + trending + latest + category filter + realtime, sab wired together |
@@ -63,9 +64,9 @@ Agar yeh nahi karte, baaki sab kuch normally kaam karega — sirf realtime live-
 cp config.example.js config.js
 ```
 
-`config.js` mein `SUPABASE_URL` aur `SUPABASE_ANON_KEY` (dono Supabase dashboard → Settings → API se) fill karo. Yeh values secret nahi hain (RLS unhein protect karti hai step 1 ke baad), isliye commit karna safe hai — lekin agar aap phir bhi commit nahi karna chahte, `config.js` ko apni website repo ke `.gitignore` mein add kar sakte hain aur deploy-time par inject kar sakte hain.
+`config.js` mein `SUPABASE_URL` aur `SUPABASE_ANON_KEY` (dono Supabase dashboard → Settings → API se) fill karo. Phase 10 SEO ke liye `SITE_ORIGIN` (live site URL, bina trailing slash) aur optional `SITE_NAME` bhi set karo — yeh `og:url` / `og:image` / canonical absolute banane ke liye chahiye. Yeh values secret nahi hain (RLS unhein protect karti hai step 1 ke baad), isliye commit karna safe hai — lekin agar aap phir bhi commit nahi karna chahte, `config.js` ko apni website repo ke `.gitignore` mein add kar sakte hain aur deploy-time par inject kar sakte hain.
 
-Yeh files apni Nexora News Urdu repo mein copy kar do (`config.js`, `supabaseClient.js`, `newsApi.js`, `realtime.js`, `utils.js` — jaisi directory structure chahiye waisi rakh sakte hain, sirf relative import paths adjust kar lena).
+Yeh files apni Nexora News Urdu repo mein copy kar do (`config.js`, `supabaseClient.js`, `newsApi.js`, `realtime.js`, `utils.js`, `seo.js` — jaisi directory structure chahiye waisi rakh sakte hain, sirf relative import paths adjust kar lena).
 
 ---
 
@@ -89,15 +90,36 @@ Poora working example: `examples/homepage-example.html`.
 
 ```js
 import { getArticleById } from "./newsApi.js";
+import { applyArticleSeo } from "./seo.js";
+import * as siteConfig from "./config.js";
 
 const params = new URLSearchParams(location.search);
 const article = await getArticleById(params.get("id"));
 // article.urdu_title, article.urdu_summary, article.article, article.seo_title
 // (for <title>/meta tags), article.image_url, article.category, article.source,
 // article.hashtags, article.url (original source link), article.created_at
+
+applyArticleSeo(article, { config: siteConfig });
+// Sets: <title>, meta description, og:*, twitter:*, link[rel=canonical]
 ```
 
 Poora working example: `examples/article-example.html`.
+
+### Homepage SEO (Phase 10)
+
+```js
+import { applyPageSeo } from "./seo.js";
+import * as siteConfig from "./config.js";
+
+applyPageSeo(
+  {
+    title: "Nexora News Urdu",
+    description: "پاکستان اور دنیا کی تازہ ترین اردو خبریں",
+    path: "/"
+  },
+  { config: siteConfig }
+);
+```
 
 ### Search
 
@@ -131,6 +153,7 @@ stop();
 - **"Trending" news** = abhi sirf recency-based hai (last 48 hours). Asal engagement-based trending ke liye `views`/`engagement_score` columns chahiye (bot ka Phase 8 — Monitoring & Analytics — inhein propose karta hai). Jab wo columns add ho jayen, `getTrendingNews()` automatically unhein use karna shuru kar dega (already coded to try `views` first, gracefully fall back to recency agar column exist na kare).
 - **Categories** ek bounded recent sample (last 500 rows) se client-side deduplicate ki jati hain. Data grow karne par ek dedicated categories table/RPC zyada scalable hoga (future consideration, Phase 9).
 - **Article URLs** `?id=<database-id>` use karti hain (koi `slug` column abhi nahi hai). Pretty URLs (`/article/some-title`) ke liye future mein bot ki schema mein ek `slug` column add karna hoga — is code ka baaki hissa unaffected rahega, sirf `getArticleById` ki jagah `getArticleBySlug` add hoga.
+- **Phase 10 SEO (`seo.js`)** client-side meta/OG set karta hai jab article load hota hai. Yeh browsers + kuch scrapers ke liye theek hai. **Facebook Sharing Debugger / Google** ko pehli HTML response mein tags chahiye hote hain — uske liye Phase 13 (static HTML / prerender / SSR) zaroori hai. Tab tak bhi `seo.js` wire karo taake title/description/image logic ek jagah ho.
 - Har function sirf **public-facing columns** select karta hai (`image_prompt`, `facebook_post`, aur publish-status tracking columns jaisi internal fields exclude ki gayi hain) — website ka payload lean rehta hai.
 
 ## Testing Performed

@@ -54,7 +54,7 @@ Yeh ek automated news aggregation aur AI content pipeline hai jo:
 
 ## Related Documents
 
-- [`PROJECT_ROADMAP.md`](./PROJECT_ROADMAP.md) — Phased execution plan
+- [`PROJECT_ROADMAP.md`](./PROJECT_ROADMAP.md) — Wave 1 (Phase 0–9) done; Wave 2 = SEO & growth (Phase 10–15)
 - [`ARCHITECTURE.md`](./ARCHITECTURE.md) — System design
 - [`BOT_ARCHITECTURE.md`](./BOT_ARCHITECTURE.md) — Bot pipeline internals
 - [`AI_PIPELINE.md`](./AI_PIPELINE.md) — AI prompt/processing design
