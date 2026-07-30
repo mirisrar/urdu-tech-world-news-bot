@@ -1,6 +1,11 @@
 # Roadmap — Urdu Tech & World News Bot
 
-Yeh roadmap current codebase (RSS fetch → Gemini AI translation/summary → Supabase storage → GitHub Actions cron) ke upar based hai, aur ideal end-to-end flow ke mutabiq 9 phases mein structured hai.
+Yeh roadmap current codebase (RSS fetch → Gemini AI translation/summary → Supabase storage → GitHub Actions cron) ke upar based hai.
+
+**Status:** Phase 0 → 9 **complete** (MVP + publish + website integration).  
+**Agay:** Phase 10+ — SEO & growth (neeche “Next Roadmap” section).
+
+Pehli wave (Phase 0–9) ideal end-to-end flow ke mutabiq structured thi.
 
 ## Target Flow
 
@@ -245,21 +250,19 @@ GitHub Actions + Supabase scale ke liye **Redis/BullMQ skip** kiya — current v
 
 ---
 
-## Suggested Order of Execution
+## Suggested Order of Execution (Wave 1 — done)
 
-1. **Phase 1** — Stability fixes (thoda kaam, sabse zyada leverage).
-2. **Phase 3** — AI Processing Pipeline (core feature, structured output baaki sab phases ki foundation hai).
-3. **Phase 2** — Multi-source collection (coverage badhana).
-4. **Phase 4** — Social Media Publishing (asli distribution value unlock karta hai).
-5. **Phase 5** — Image Pipeline (publishing ko polish karta hai).
-6. **Phase 6** — Website Integration.
-7. **Phase 9** — Admin + analytics + bot alerts done; ab scale/optimization.
+1. **Phase 1** — Stability fixes  
+2. **Phase 3** — AI Processing Pipeline  
+3. **Phase 2** — Multi-source collection  
+4. **Phase 4** — Social Media Publishing  
+5. **Phase 5** — Image Pipeline  
+6. **Phase 6** — Website Integration  
+7. **Phase 7–9** — Admin, monitoring, scale  
 
 ---
 
-## Progress Tracking / Completion Estimate
-
-Har phase ko project ke overall scope ka ek weight diya gaya hai (bara/critical phases zyada weight, chhote/low-priority phases kam weight) — taake "kitna % complete hai" ka ek meaningful (sirf "9 mein se 2 phase" jaisa naive count nahi) answer mil sake.
+## Progress Tracking — Wave 1 (Phase 0–9)
 
 | Phase | Weight | Status |
 |---|---|---|
@@ -273,29 +276,171 @@ Har phase ko project ke overall scope ka ek weight diya gaya hai (bara/critical 
 | Phase 7 — Admin Dashboard (existing Nexora CMS + RLS/schema align) | 8% | ✅ Done |
 | Phase 8 — Monitoring & Analytics (Admin analytics + Telegram run alerts) | 4% | ✅ Done |
 | Phase 9 — Scalability & Optimization (parallel RSS, title dedupe, publish retry) | 3% | ✅ Done |
-| **Total** | **100%** | |
+| **Wave 1 total** | **100%** | **✅ Complete** |
 
-**Abhi tak (Phase 0 → Phase 9 done)**: **100% complete** (5% + 10% + 10% + 15% + 20% + 10% + 15% + 8% + 4% + 3%).
-
-**Note**: "Done" yahan **code implemented aur request-format live-verified** ka matlab hai (see Phase 4 status note above) — **real-account success path abhi tak kisi bhi phase ke external integrations (Gemini, NewsAPI, Facebook, Telegram, WhatsApp, X) mein live-verify nahi hua**, kyunke is dev environment mein in platforms ke real credentials available nahi the. Production mein real secrets add karne ke baad, ek manual `workflow_dispatch` run se in sab ko end-to-end confirm karna baaki hai.
-
-### Yeh weights kyun aise hain?
-
-- **Phase 4 (Publishing) sabse bara weight (20%)** — 4 alag channels (Facebook, Telegram, WhatsApp, X), har ek apna auth/API/idempotency logic chahta hai — sabse zyada implementation surface area.
-- **Phase 3 (AI Pipeline) aur Phase 6 (Website) 15% each** — dono critical/high priority hain aur substantial kaam hain (structured AI output + validation; full website ya integration layer).
-- **Phase 7-9 (Dashboard, Monitoring, Scale) kam weight** — valuable hain but project ke "core value" (news collect → translate → publish) ke baghair bhi system chal sakta hai; yeh polish/maturity phases hain.
-- Yeh weights **estimates hain, exact science nahi** — jaise-jaise actual implementation ka scope clear hota jaye, inko revise karna theek hai. (Phase 6's "existing vs. naya website" sawal ab resolve ho chuka hai — existing website hai, sirf integration chahiye — see Phase 6 details.)
-
-### Kaise update karein
-
-Jab bhi koi phase complete ho, is table mein status update karo aur cumulative % recalculate karo — taake yeh roadmap hamesha ek accurate "hum kahan hain" snapshot de.
+**Note:** Wave 1 “Done” = code shipped; kuch external integrations ka live credential verify production secrets pe depend karta hai.
 
 ---
 
-## Future Documents (agle steps ke baad banayenge)
+# Next Roadmap — Wave 2 (SEO & Growth)
 
-- Bot Architecture Document
-- Database Design Document
-- API Flow Document
-- Development Roadmap (detailed sprint-level breakdown)
-- Project Constitution
+> Focus: Google + social pe discoverability. Bot pehle se `seo_title` / summary / image / category deta hai — **asli SEO kaam website + URL + crawl setup** pe hai.
+
+```
+Bot (seo_title, summary, image)
+        │
+        ▼
+Website article pages
+  meta + OG + JSON-LD
+        │
+        ▼
+Pretty URLs / slugs
+        │
+        ▼
+sitemap.xml + robots.txt
+        │
+        ▼
+Search Console + indexing
+        │
+        ▼
+Internal links / related news / performance
+```
+
+---
+
+## Phase 10 — SEO Foundation (Meta + Share) — 🔴 Critical
+
+**Kahan:** Nexora website (article + homepage), thoda `website-integration/` helpers.
+
+- [ ] Har article page pe:
+  - `<title>` = `seo_title` (fallback: `urdu_title`) + brand
+  - `<meta name="description">` = `urdu_summary`
+  - Open Graph: `og:title`, `og:description`, `og:image`, `og:url`, `og:type=article`, `og:locale=ur_PK`
+  - Twitter Card: `summary_large_image`
+- [ ] Canonical URL har article pe
+- [ ] `lang="ur"` + `dir="rtl"` consistently
+- [ ] Homepage / category pages pe bhi basic title + description
+- [ ] Confirm DB mein `seo_title` persist ho raha hai  
+  (`SELECT id, seo_title FROM news ORDER BY id DESC LIMIT 10;`)
+
+**Done criteria:** Kisi article ka “View Source” / Facebook Debugger / Twitter Card Validator sahi title, description, image dikhaye — empty ya sirf JS shell nahi.
+
+**Pehle yeh kyun:** Bina meta/OG ke baaki SEO half-blind rehta hai; social shares bhi weak lagte hain.
+
+---
+
+## Phase 11 — Crawl Index (Sitemap + Robots + Search Console) — 🔴 Critical
+
+**Kahan:** Website root + optional bot/cron jo sitemap regenerate kare.
+
+- [ ] `robots.txt` — allow public pages; block `/admin` etc.
+- [ ] `sitemap.xml` (ya `sitemap-index`) — saari public article URLs + lastmod
+- [ ] Nayi news aate hi sitemap update (static rebuild, edge function, ya scheduled job)
+- [ ] Google Search Console: property + sitemap submit
+- [ ] Bing Webmaster (optional, same sitemap)
+
+**Done criteria:** Search Console mein sitemap “Success”; sample URLs “URL inspection” se indexable.
+
+---
+
+## Phase 12 — Pretty URLs + Structured Data — 🟠 High
+
+**Kahan:** Bot schema + website routing + `website-integration/`.
+
+- [ ] DB: `slug` column (unique), AI ya deterministic slug from `seo_title` / `urdu_title`
+- [ ] URLs: `/article/<slug>` (ya `/news/<slug>`) — `?id=` sirf fallback
+- [ ] Redirects: old `?id=` → new slug (bookmarks / pehle share kiye links)
+- [ ] JSON-LD `NewsArticle` (headline, image, datePublished, dateModified, author/publisher, inLanguage: `ur`)
+- [ ] Optional: `BreadcrumbList` JSON-LD
+- [ ] Facebook / bot caption website link slug-based URL use kare (`WEBSITE_ARTICLE_PATH` update)
+
+**Done criteria:** Shareable clean URL; Rich Results Test mein NewsArticle valid; purani id-URLs tootensi nahi.
+
+---
+
+## Phase 13 — Crawlability & Rendering — 🟠 High
+
+> Abhi site vanilla JS + client fetch hai — Google ko kabhi-kabhi content late / incomplete milta hai.
+
+- [ ] Decide approach (ek choose karo):
+  - **A.** Build-time / on-demand static HTML per article (simplest for news), ya
+  - **B.** Prerender / SSR for article routes, ya
+  - **C.** Hybrid: critical meta server-rendered, body can hydrate
+- [ ] Article HTML mein pehla paint pehle se title + summary + body (JS-only shell avoid)
+- [ ] Core Web Vitals: LCP image sizing, font, no huge blocking JS
+- [ ] 404 + soft-delete handling for removed news (id 1–500 delete jaisa cases)
+
+**Done criteria:** `curl` / “View Source” pe article text dikhe; Lighthouse SEO + performance baseline green-ish on article template.
+
+---
+
+## Phase 14 — On-Page & Content SEO — 🟡 Medium
+
+- [ ] H1 = `urdu_title`; H2s jahan article sections hon
+- [ ] Image `alt` = meaningful Urdu (title-based), not empty
+- [ ] Internal links: related / same-category news (3–5)
+- [ ] Category landing pages SEO titles (“پاکستان خبریں”, “ٹیک خبریں”, …)
+- [ ] Author / publisher entity consistency (Nexora News Urdu)
+- [ ] Optional bot field: dedicated `meta_description` agar summary kabhi bohot chhoti/lambi ho
+- [ ] Avoid thin pages: skip / noindex agar article body bohot short ho
+
+**Done criteria:** Category + article templates on-page checklist pass; related-news module live.
+
+---
+
+## Phase 15 — Measurement & Growth Loop — 🟡 Medium
+
+- [ ] Search Console: queries, pages, CTR — haftawar review
+- [ ] Analytics: article views (Phase 8 `views` — website pe increment confirm)
+- [ ] Top pages vs zero-impression pages → title/meta tweak
+- [ ] Facebook → website click-through (UTM: `?utm_source=facebook&utm_medium=social`)
+- [ ] Index coverage errors fix queue (soft-404, redirected, excluded)
+
+**Done criteria:** Weekly SEO snapshot possible (impressions, clicks, top 10 URLs); UTM se social traffic alag dikhe.
+
+---
+
+## Suggested Order (Wave 2)
+
+1. **Phase 10** — Meta + OG (sabse tez win)  
+2. **Phase 11** — Sitemap + robots + Search Console  
+3. **Phase 12** — Slugs + JSON-LD  
+4. **Phase 13** — Rendering / static HTML (crawl reliability)  
+5. **Phase 14** — On-page + internal links  
+6. **Phase 15** — Measure + iterate  
+
+**Rule:** Pehle indexable + shareable banao, phir pretty URLs, phir deep content polish.
+
+---
+
+## Progress Tracking — Wave 2
+
+| Phase | Focus | Priority | Status |
+|---|---|---|---|
+| Phase 10 — SEO Foundation (meta / OG) | Website | 🔴 Critical | ⬜ Not started |
+| Phase 11 — Sitemap + robots + GSC | Website / ops | 🔴 Critical | ⬜ Not started |
+| Phase 12 — Slugs + JSON-LD | Bot + website | 🟠 High | ⬜ Not started |
+| Phase 13 — Crawlability / rendering | Website | 🟠 High | ⬜ Not started |
+| Phase 14 — On-page + internal links | Website (+ optional bot) | 🟡 Medium | ⬜ Not started |
+| Phase 15 — Measurement & growth | Ops | 🟡 Medium | ⬜ Not started |
+
+### Wave 2 — pehle se ready (bot side)
+
+| Item | Status |
+|---|---|
+| AI `seo_title` | ✅ Generated |
+| `urdu_summary` (meta description candidate) | ✅ |
+| Category + hashtags | ✅ |
+| Article image for `og:image` | ✅ (when cover/stock exists) |
+| Website article link on Facebook | ✅ (`WEBSITE_BASE_URL`) |
+| Pretty `slug` column | ❌ Not yet |
+| Auto `sitemap.xml` | ❌ Not yet |
+| JSON-LD helpers | ❌ Not yet |
+
+---
+
+## Docs already in repo
+
+- `DATABASE_SCHEMA.md`, `ARCHITECTURE.md`, `BOT_ARCHITECTURE.md`, `AI_PIPELINE.md`, `website-integration/README.md`, etc.
+
+Wave 2 ke baad useful add-ons: `SEO_CHECKLIST.md` (per-article QA), Search Console runbook.
