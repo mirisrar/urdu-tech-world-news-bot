@@ -5,8 +5,8 @@
  * (a Page access token with the pages_manage_posts permission).
  *
  * Pacing:
- * - FACEBOOK_PAUSE_UNTIL — hard pause (spam cool-down)
- * - FACEBOOK_MAX_POSTS_PER_DAY (default 6) + FACEBOOK_MIN_GAP_MS (default 4h)
+ * - FACEBOOK_PAUSE_UNTIL — optional hard pause (unset = post now)
+ * - FACEBOOK_MAX_POSTS_PER_DAY + FACEBOOK_MIN_GAP_MS (workflow: 144/day, 10 min)
  * - FACEBOOK_MAX_POSTS_PER_RUN (default 1) so one job cannot burst
  *
  * Website link (required on every post when configured):

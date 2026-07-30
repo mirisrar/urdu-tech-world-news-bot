@@ -1,10 +1,10 @@
 /**
  * Facebook post pacing — pause window, daily cap, and gaps between posts.
  *
- * After Meta spam flags, we:
- *   1. Pause all Facebook posts until FACEBOOK_PAUSE_UNTIL
- *   2. Then allow at most FACEBOOK_MAX_POSTS_PER_DAY (default 6)
- *   3. Enforce FACEBOOK_MIN_GAP_MS between successes (default 4 hours)
+ * Controls:
+ *   1. Optional pause until FACEBOOK_PAUSE_UNTIL (unset = no pause)
+ *   2. Cap FACEBOOK_MAX_POSTS_PER_DAY (workflow default 144 for 10-min cadence)
+ *   3. Enforce FACEBOOK_MIN_GAP_MS between successes (workflow: 10 minutes)
  *   4. Cap FACEBOOK_MAX_POSTS_PER_RUN (default 1) so one job cannot burst
  *
  * Daily count / last success persist in .bot-publish-state (Actions cache).
