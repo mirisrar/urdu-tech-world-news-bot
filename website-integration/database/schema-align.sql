@@ -26,6 +26,9 @@ ALTER TABLE news ADD COLUMN IF NOT EXISTS reading_time integer DEFAULT 2;
 -- 2. Bot / AI / publish columns (no-op if already applied)
 -- ---------------------------------------------------------------------------
 ALTER TABLE news ADD COLUMN IF NOT EXISTS seo_title text;
+ALTER TABLE news ADD COLUMN IF NOT EXISTS seo_description text;
+ALTER TABLE news ADD COLUMN IF NOT EXISTS seo_keywords text;
+ALTER TABLE news ADD COLUMN IF NOT EXISTS image_credit text;
 ALTER TABLE news ADD COLUMN IF NOT EXISTS facebook_post text;
 ALTER TABLE news ADD COLUMN IF NOT EXISTS image_prompt text;
 ALTER TABLE news ADD COLUMN IF NOT EXISTS fb_post_id text;

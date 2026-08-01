@@ -189,7 +189,14 @@ export async function fetchTopicStockImage(opts = {}, log = () => {}) {
         imageUrl: result.imageUrl,
         provider: result.provider,
         category,
-        query
+        query,
+        photographer: result.photographer || "",
+        // Website can show: "Photo: Name / Unsplash"
+        imageCredit: result.photographer
+          ? `Photo: ${result.photographer} / ${
+              result.provider === "pexels" ? "Pexels" : "Unsplash"
+            }`
+          : `Source: ${result.provider === "pexels" ? "Pexels" : "Unsplash"}`
       };
     } catch (error) {
       log("warn", `Stock image ${name} search failed`, {

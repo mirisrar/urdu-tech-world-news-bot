@@ -13,7 +13,8 @@ const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/
 //   v2 — structured JSON, headline-only input
 //   v3 — full source text + strict Urdu + AI image_prompt
 //   v4 — AI image_prompt removed; images from original article only
-export const PROMPT_VERSION = 4;
+//   v5 — seo_description + seo_keywords for website SEO columns
+export const PROMPT_VERSION = 5;
 
 const AI_MAX_RETRIES = 2;
 const AI_RETRY_DELAY_MS = 2000;
@@ -27,7 +28,7 @@ const URDU_SCRIPT_RE = /[\u0600-\u06FF]/g;
 const SYSTEM_INSTRUCTION = `You are a senior Urdu news editor for an Urdu news website (Nexora News Urdu).
 
 HARD RULES — violate none of these:
-1. Write title_urdu, body_urdu, urdu_summary, seo_title, and facebook_post ONLY in clean Urdu using Arabic script (اردو). Do NOT write those fields in English, Roman Urdu, or Hindi Devanagari.
+1. Write title_urdu, body_urdu, urdu_summary, seo_title, seo_description, and facebook_post ONLY in clean Urdu using Arabic script (اردو). Do NOT write those fields in English, Roman Urdu, or Hindi Devanagari. seo_keywords may mix Urdu/English topic terms.
 2. body_urdu MUST be a FULL news article: at least 3 to 4 detailed paragraphs (roughly 300–450 Urdu words). Never return only a headline, one sentence, or a short teaser as body_urdu.
 3. Expand from the provided English source title + source text. Stay factual; do not invent quotes or statistics not supported by the source. If source text is thin, write a careful multi-paragraph Urdu news brief from the headline facts only.
 4. Do NOT generate image prompts, image URLs, or any visual-generation fields. Images are handled separately from the original news website.
@@ -56,6 +57,16 @@ export const RESPONSE_SCHEMA = {
       type: "STRING",
       description: "SEO-friendly Urdu title, distinct from title_urdu, Arabic script"
     },
+    seo_description: {
+      type: "STRING",
+      description:
+        "Urdu meta description for search/social, ~140–160 characters, Arabic script, no hashtags"
+    },
+    seo_keywords: {
+      type: "STRING",
+      description:
+        "Comma-separated SEO keywords (5–12), mix of Urdu and English topic terms, no # symbols"
+    },
     body_urdu: {
       type: "STRING",
       description:
@@ -76,6 +87,8 @@ export const RESPONSE_SCHEMA = {
     "title_urdu",
     "urdu_summary",
     "seo_title",
+    "seo_description",
+    "seo_keywords",
     "body_urdu",
     "hashtags",
     "facebook_post"
@@ -117,6 +130,22 @@ export function parseAiResponse(aiText) {
   const bodyUrdu = parsed.body_urdu ?? parsed.article ?? "";
   const urduSummary = parsed.urdu_summary ?? parsed.urduSummary ?? "";
   const seoTitle = parsed.seo_title ?? parsed.seoTitle ?? "";
+  const seoDescription = parsed.seo_description ?? parsed.seoDescription ?? "";
+  let seoKeywords = parsed.seo_keywords ?? parsed.seoKeywords ?? "";
+  if (Array.isArray(seoKeywords)) {
+    seoKeywords = seoKeywords
+      .filter((k) => typeof k === "string" && k.trim())
+      .map((k) => k.replace(/^#/, "").trim())
+      .join(", ");
+  } else if (typeof seoKeywords === "string") {
+    seoKeywords = seoKeywords
+      .split(/[,|]+/)
+      .map((k) => k.replace(/^#/, "").trim())
+      .filter(Boolean)
+      .join(", ");
+  } else {
+    seoKeywords = "";
+  }
   const facebookPost = parsed.facebook_post ?? parsed.facebookPost ?? "";
 
   const hashtags = Array.isArray(parsed.hashtags)
@@ -125,11 +154,19 @@ export function parseAiResponse(aiText) {
 
   const category = typeof parsed.category === "string" ? parsed.category.trim() : "";
 
+  const summary =
+    typeof urduSummary === "string" ? urduSummary.trim() : "";
+  const seoDesc =
+    typeof seoDescription === "string" ? seoDescription.trim() : "";
+
   return {
     category,
     urduTitle: typeof titleUrdu === "string" ? titleUrdu.trim() : "",
-    urduSummary: typeof urduSummary === "string" ? urduSummary.trim() : "",
+    urduSummary: summary,
     seoTitle: typeof seoTitle === "string" ? seoTitle.trim() : "",
+    // Never leave SEO description empty when we have a summary.
+    seoDescription: seoDesc || summary.slice(0, 160),
+    seoKeywords,
     article: typeof bodyUrdu === "string" ? bodyUrdu.trim() : "",
     hashtags: hashtags.join(" "),
     facebookPost: typeof facebookPost === "string" ? facebookPost.trim() : "",

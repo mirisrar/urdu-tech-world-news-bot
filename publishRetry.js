@@ -97,7 +97,7 @@ export async function fetchPublishRetryCandidates(supabase, options = {}) {
  * @param {import("@supabase/supabase-js").SupabaseClient} supabase
  * @param {(newsId: number|string, publishResults: object) => Promise<void>} updatePublishStatus
  * @param {(level: string, message: string, meta?: object) => void} log
- * @param {{ limit?: number, lookbackHours?: number }} [options]
+ * @param {{ limit?: number, lookbackHours?: number, skipFacebook?: boolean }} [options]
  * @returns {Promise<{ attempted: number, publishedAny: number, skipped: number }>}
  */
 export async function retryPendingPublishes(supabase, updatePublishStatus, log, options = {}) {
@@ -131,6 +131,11 @@ export async function retryPendingPublishes(supabase, updatePublishStatus, log, 
     }
 
     let channels = missing;
+
+    // When facebook_queue owns FB posting, never retry Facebook here.
+    if (options.skipFacebook) {
+      channels = channels.filter((name) => name !== "facebook");
+    }
 
     // Cross-run dedupe: if we already posted this newsId to Facebook (file
     // state) but DB fb_post_id was never saved, do NOT post again.

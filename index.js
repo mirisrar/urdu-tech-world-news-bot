@@ -24,6 +24,13 @@ import {
   getFacebookBlockReason
 } from "./publishers/facebookThrottle.js";
 import { fetchTopicStockImage, hasStockImageProvider } from "./stockImage.js";
+import {
+  enqueueFacebookNews,
+  enqueueMissingNewsForFacebook,
+  isFacebookQueueEnabled,
+  processFacebookQueue,
+  facebookScheduleGapMs
+} from "./facebookQueue.js";
 
 // Phase 6: the website (Nexora News Urdu) now reads the `news` table
 // directly from the browser using the Supabase JS SDK + SUPABASE_ANON_KEY.
@@ -173,7 +180,22 @@ async function loadRecentTitles() {
   return titles;
 }
 
-function buildNewsRow(item, sourceName, aiResult, imageUrl) {
+/**
+ * Build image_credit for AdSense-safe attribution.
+ * @param {string} sourceName
+ * @param {"rss"|"meta"|"unsplash"|"pexels"|string} imageSource
+ * @param {string} [imageCredit]
+ */
+function resolveImageCredit(sourceName, imageSource, imageCredit = "") {
+  const explicit = String(imageCredit || "").trim();
+  if (explicit) return explicit;
+  if (imageSource === "unsplash") return "Source: Unsplash";
+  if (imageSource === "pexels") return "Source: Pexels";
+  if (sourceName) return `Source: ${sourceName}`;
+  return "";
+}
+
+function buildNewsRow(item, sourceName, aiResult, imageUrl, imageCredit = "") {
   return {
     title: item.title,
     source: sourceName,
@@ -182,12 +204,15 @@ function buildNewsRow(item, sourceName, aiResult, imageUrl) {
     urdu_title: aiResult.urduTitle,
     urdu_summary: aiResult.urduSummary,
     seo_title: aiResult.seoTitle,
+    seo_description: aiResult.seoDescription || aiResult.urduSummary || "",
+    seo_keywords: aiResult.seoKeywords || "",
     article: aiResult.article,
     hashtags: aiResult.hashtags,
     facebook_post: aiResult.facebookPost,
     // AI image prompts disabled — column left empty / omitted via fallback if unused.
     image_prompt: "",
-    image_url: imageUrl
+    image_url: imageUrl,
+    image_credit: imageCredit || ""
   };
 }
 
@@ -244,8 +269,8 @@ async function writeWithColumnFallback(row, performWrite, { maxAttempts = 8 } = 
  * Inserts a processed article and returns its new row id (used afterward
  * to record publish status — see updatePublishStatus).
  */
-async function saveNews(item, sourceName, aiResult, imageUrl) {
-  const row = buildNewsRow(item, sourceName, aiResult, imageUrl);
+async function saveNews(item, sourceName, aiResult, imageUrl, imageCredit = "") {
+  const row = buildNewsRow(item, sourceName, aiResult, imageUrl, imageCredit);
   const data = await writeWithColumnFallback(row, (currentRow) =>
     supabase.from("news").insert(currentRow).select("id").single()
   );
@@ -317,6 +342,13 @@ async function updatePublishStatus(newsId, publishResults) {
 async function publishAndRecord(newsId, item, sourceName, aiResult, imageUrl) {
   try {
     const skipFacebook = wasFacebookPosted(newsId);
+    const useQueue = isFacebookQueueEnabled();
+
+    // Facebook: enqueue for 5-min stagger (B4). Other channels still publish now.
+    const onlyChannels = skipFacebook || useQueue
+      ? ["telegram", "whatsapp", "x"]
+      : undefined;
+
     const results = await publishAll(
       {
         urduTitle: aiResult.urduTitle,
@@ -327,7 +359,7 @@ async function publishAndRecord(newsId, item, sourceName, aiResult, imageUrl) {
         sourceUrl: item.link,
         newsId
       },
-      skipFacebook ? { onlyChannels: ["telegram", "whatsapp", "x"] } : undefined
+      onlyChannels ? { onlyChannels } : undefined
     );
 
     if (skipFacebook) {
@@ -336,11 +368,32 @@ async function publishAndRecord(newsId, item, sourceName, aiResult, imageUrl) {
         skipped: true,
         reason: "already_posted_state"
       };
-      // Best-effort backfill DB if we have a stored post id.
       const priorId = getFacebookPostedId(newsId);
       if (priorId) {
         await updatePublishStatus(newsId, { facebook: { published: true, id: priorId } });
       }
+    } else if (useQueue) {
+      const queued = await enqueueFacebookNews(
+        supabase,
+        {
+          newsId,
+          facebookPost: aiResult.facebookPost,
+          hashtags: aiResult.hashtags,
+          imageUrl
+        },
+        log
+      );
+      results.facebook = queued.queued
+        ? {
+            published: false,
+            skipped: true,
+            reason: `queued_until_${queued.scheduledAt}`
+          }
+        : {
+            published: false,
+            skipped: true,
+            reason: queued.reason || "queue_skip"
+          };
     }
 
     if (results.facebook?.published && results.facebook.id) {
@@ -448,16 +501,28 @@ async function processItem(item, sourceName) {
       item.title,
       log
     );
+    const imageCredit = resolveImageCredit(
+      sourceName,
+      stock.provider,
+      stock.imageCredit
+    );
 
     log("info", "Resolved article image", {
       source: sourceName,
       title: item.title,
       imageSource: stock.provider,
       category: aiPreview.category,
+      imageCredit,
       imageUrl: (imageStored || "").slice(0, 120)
     });
 
-    const newsId = await saveNews(item, sourceName, aiPreview, imageStored);
+    const newsId = await saveNews(
+      item,
+      sourceName,
+      aiPreview,
+      imageStored,
+      imageCredit
+    );
     log("info", "News saved with full AI analysis", { title: item.title, source: sourceName });
     await publishAndRecord(newsId, item, sourceName, aiPreview, imageStored);
     return "processed";
@@ -479,16 +544,18 @@ async function processItem(item, sourceName) {
   });
 
   imageUrl = await storeOriginalArticleImage(supabase, imageUrl, item.title, log);
+  const imageCredit = resolveImageCredit(sourceName, imageSource);
 
   log("info", "Resolved article image", {
     source: sourceName,
     title: item.title,
     imageSource,
     category: aiResult.category,
+    imageCredit,
     imageUrl: (imageUrl || "").slice(0, 120)
   });
 
-  const newsId = await saveNews(item, sourceName, aiResult, imageUrl);
+  const newsId = await saveNews(item, sourceName, aiResult, imageUrl, imageCredit);
   log("info", "News saved with full AI analysis", { title: item.title, source: sourceName });
 
   await publishAndRecord(newsId, item, sourceName, aiResult, imageUrl);
@@ -646,12 +713,34 @@ async function run() {
     facebookMaxPostsPerRun: fbCfg.maxPerRun,
     facebookMaxPostsPerDay: fbCfg.maxPerDay,
     facebookMinGapMs: fbCfg.minGapMs,
+    facebookScheduleGapMs: facebookScheduleGapMs(),
+    facebookUseQueue: isFacebookQueueEnabled(),
     facebookPauseUntil: fbCfg.pauseUntilIso || null,
     facebookBlocked: getFacebookBlockReason(),
     skipIfNoTopicImage: SKIP_IF_NO_TOPIC_IMAGE,
     hasStockImageProvider: hasStockImageProvider(),
-    hasServiceRoleKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY)
+    hasServiceRoleKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+    websiteBaseUrl: process.env.WEBSITE_BASE_URL || "https://www.nexoranewsurdu.com"
   });
+
+  // B5: Admin / orphan news → same Facebook queue (5-min stagger).
+  if (isFacebookQueueEnabled()) {
+    try {
+      await enqueueMissingNewsForFacebook(supabase, {}, log);
+    } catch (error) {
+      log("warn", "Facebook queue backfill failed", { message: error.message });
+    }
+  }
+
+  // B4: post anything whose scheduled_at is due.
+  if (isFacebookQueueEnabled()) {
+    try {
+      const queueStats = await processFacebookQueue(supabase, updatePublishStatus, log);
+      log("info", "Facebook queue process", queueStats);
+    } catch (error) {
+      log("warn", "Facebook queue process failed", { message: error.message });
+    }
+  }
 
   const candidates = await collectItems();
 
@@ -690,14 +779,30 @@ async function run() {
   }
 
   // Phase 9: DB-backed retry for recent rows missing social posts.
+  // When FB queue is on, retry skips Facebook (queue owns that channel).
   let publishRetry = { attempted: 0, publishedAny: 0, skipped: 0 };
   try {
     publishRetry = await retryPendingPublishes(supabase, updatePublishStatus, log, {
       limit: PUBLISH_RETRY_LIMIT,
-      lookbackHours: PUBLISH_RETRY_LOOKBACK_HOURS
+      lookbackHours: PUBLISH_RETRY_LOOKBACK_HOURS,
+      skipFacebook: isFacebookQueueEnabled()
     });
   } catch (error) {
     log("warn", "Publish retry step failed", { message: error.message });
+  }
+
+  // Drain due Facebook queue again after new items were enqueued this run.
+  if (isFacebookQueueEnabled()) {
+    try {
+      const queueStats = await processFacebookQueue(supabase, updatePublishStatus, log);
+      if (queueStats.posted || queueStats.failed) {
+        log("info", "Facebook queue process (post-run)", queueStats);
+      }
+    } catch (error) {
+      log("warn", "Facebook queue process (post-run) failed", {
+        message: error.message
+      });
+    }
   }
 
   const summary = {
