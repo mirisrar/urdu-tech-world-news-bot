@@ -92,12 +92,18 @@ import { getArticleById } from "./newsApi.js";
 
 const params = new URLSearchParams(location.search);
 const article = await getArticleById(params.get("id"));
-// article.urdu_title, article.urdu_summary, article.article, article.seo_title
-// (for <title>/meta tags), article.image_url, article.category, article.source,
-// article.hashtags, article.url (original source link), article.created_at
+// article.urdu_title, article.urdu_summary, article.article,
+// article.seo_title / seo_description / seo_keywords (for <title>/meta/OG),
+// article.image_url, article.category, article.source, article.hashtags,
+// article.url (original source link), article.created_at
+
+import { applyArticleSeoMeta } from "./utils.js";
+applyArticleSeoMeta(article); // sets document.title + description/keywords/OG/Twitter
 ```
 
 Poora working example: `examples/article-example.html`.
+
+**Live site note:** `www.nexoranewsurdu.com/js/article.js` already calls `updateSeo()`, but `js/api.js` `NEWS_DETAIL_COLUMNS` must include `seo_title, seo_description, seo_keywords` or those fields never load from Supabase.
 
 ### Search
 

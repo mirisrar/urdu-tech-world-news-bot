@@ -15,7 +15,7 @@ import { getSupabaseClient } from "./supabaseClient.js";
 // (image_prompt, facebook_post, publish-status tracking columns) aren't
 // needed by the website and are left out to keep payloads lean.
 const PUBLIC_COLUMNS =
-  "id, title, source, category, urdu_title, urdu_summary, seo_title, article, hashtags, image_url, url, created_at";
+  "id, title, source, category, urdu_title, urdu_summary, seo_title, seo_description, seo_keywords, article, hashtags, image_url, url, created_at";
 
 const DEFAULT_PAGE_SIZE = 20;
 const BREAKING_NEWS_WINDOW_HOURS = 2;

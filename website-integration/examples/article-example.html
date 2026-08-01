@@ -4,6 +4,17 @@
   <head>
     <meta charset="UTF-8" />
     <title>خبر — Nexora News Urdu</title>
+    <meta id="meta-description" name="description" content="" />
+    <meta id="meta-keywords" name="keywords" content="" />
+    <link id="canonical-link" rel="canonical" href="" />
+    <meta id="og-headline" property="og:title" content="" />
+    <meta id="og-description" property="og:description" content="" />
+    <meta id="og-image" property="og:image" content="" />
+    <meta id="og-url" property="og:url" content="" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta id="twitter-title" name="twitter:title" content="" />
+    <meta id="twitter-description" name="twitter:description" content="" />
+    <meta id="twitter-image" name="twitter:image" content="" />
   </head>
   <body>
     <article id="article-container">
@@ -12,7 +23,7 @@
 
     <script type="module">
       import { getArticleById } from "../newsApi.js";
-      import { formatRelativeTime, resolveImageUrl } from "../utils.js";
+      import { applyArticleSeoMeta, formatRelativeTime, resolveImageUrl } from "../utils.js";
 
       function renderArticle(article) {
         const container = document.getElementById("article-container");
@@ -22,9 +33,8 @@
           return;
         }
 
-        // seo_title is distinct from urdu_title — use it for <title>/meta
-        // tags, and urdu_title as the on-page heading.
-        document.title = `${article.seo_title || article.urdu_title} — Nexora News Urdu`;
+        // On-page H1 = urdu_title; <title>/meta/OG = seo_* fields from DB.
+        applyArticleSeoMeta(article);
 
         container.innerHTML = `
           <img src="${resolveImageUrl(article.image_url)}" alt="${article.urdu_title}" />
