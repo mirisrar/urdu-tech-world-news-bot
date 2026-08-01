@@ -1,12 +1,16 @@
 /**
- * Facebook publish queue — stagger posts every FACEBOOK_SCHEDULE_GAP_MS
- * (default 5 minutes) via Graph API when due.
- *
- * Table: facebook_queue (see website-integration/database/facebook-queue.sql)
+ * Facebook native Scheduled posts + local queue tracking.
  *
  * Flow:
- *   1. enqueueFacebookNews(...) after bot/admin news is saved
- *   2. processFacebookQueue(...) each cron run — post due rows
+ *   1. Pick staggered scheduled_at (first >= now+10min — Meta minimum)
+ *   2. Insert facebook_queue row
+ *   3. Call Graph API with published=false + scheduled_publish_time
+ *      → post appears in Facebook Page → Scheduled
+ *   4. Mark queue status=scheduled + store fb_post_id
+ *
+ * processFacebookQueue() retries pending rows that failed to schedule.
+ *
+ * Table: facebook_queue (see website-integration/database/facebook-queue.sql)
  */
 
 import {
@@ -16,6 +20,9 @@ import {
 } from "./publishers/facebook.js";
 import { markFacebookPosted, wasFacebookPosted } from "./publishState.js";
 
+/** Meta requires scheduled_publish_time at least ~10 minutes ahead. */
+export const FACEBOOK_MIN_SCHEDULE_AHEAD_MS = 10 * 60 * 1000;
+
 function envInt(name, fallback) {
   const raw = process.env[name];
   if (raw === undefined || raw === "") return fallback;
@@ -23,14 +30,14 @@ function envInt(name, fallback) {
   return Number.isFinite(n) && n >= 0 ? n : fallback;
 }
 
-/** @returns {number} gap between scheduled posts in ms (default 5 min) */
+/** Gap between scheduled slots (default 5 min). */
 export function facebookScheduleGapMs() {
   return envInt("FACEBOOK_SCHEDULE_GAP_MS", 5 * 60 * 1000);
 }
 
 /**
- * Whether to use the DB queue (default true). Set FACEBOOK_USE_QUEUE=0
- * to fall back to immediate publish via publishAll.
+ * Whether to use the queue + native FB schedule (default true).
+ * Set FACEBOOK_USE_QUEUE=0 for immediate live publish via publishAll.
  */
 export function isFacebookQueueEnabled() {
   const raw = String(process.env.FACEBOOK_USE_QUEUE ?? "true").toLowerCase();
@@ -38,13 +45,13 @@ export function isFacebookQueueEnabled() {
 }
 
 /**
- * Next scheduled_at = max(now, last_scheduled + gap).
+ * Next schedule time: max(now+10min, last_scheduled + gap).
  * @param {import("@supabase/supabase-js").SupabaseClient} supabase
  * @returns {Promise<Date>}
  */
 export async function nextFacebookScheduleAt(supabase) {
   const gap = facebookScheduleGapMs();
-  const now = Date.now();
+  const earliest = Date.now() + FACEBOOK_MIN_SCHEDULE_AHEAD_MS;
 
   const { data, error } = await supabase
     .from("facebook_queue")
@@ -54,20 +61,18 @@ export async function nextFacebookScheduleAt(supabase) {
     .maybeSingle();
 
   if (error) {
-    // Table missing / RLS — schedule from now (caller may still fail on insert).
-    return new Date(now);
+    return new Date(earliest);
   }
 
   const lastMs = data?.scheduled_at ? Date.parse(data.scheduled_at) : NaN;
   if (!Number.isFinite(lastMs)) {
-    return new Date(now);
+    return new Date(earliest);
   }
 
-  return new Date(Math.max(now, lastMs + gap));
+  return new Date(Math.max(earliest, lastMs + gap));
 }
 
 /**
- * Build the exact caption stored on the queue row.
  * @param {object} opts
  * @param {string} opts.facebookPost
  * @param {string} [opts.hashtags]
@@ -79,7 +84,57 @@ export function buildQueuedFacebookText({ facebookPost, hashtags, newsId }) {
 }
 
 /**
- * Enqueue one news row for Facebook (idempotent on news_id).
+ * Call Facebook Graph to create a native Scheduled post, then update queue row.
+ *
+ * @param {import("@supabase/supabase-js").SupabaseClient} supabase
+ * @param {object} row - facebook_queue row fields
+ * @param {(newsId: number|string, publishResults: object) => Promise<void>} [updatePublishStatus]
+ * @param {(level: string, message: string, meta?: object) => void} [log]
+ */
+async function scheduleRowOnFacebook(supabase, row, updatePublishStatus, log = () => {}) {
+  const result = await publishToFacebook({
+    facebookPost: row.post_text,
+    imageUrl: row.image_url || undefined,
+    newsId: row.news_id,
+    rawMessage: true,
+    scheduleAt: row.scheduled_at,
+    skipGapThrottle: true
+  });
+
+  if (result.skipped) {
+    return { ok: false, skipped: true, reason: result.reason };
+  }
+
+  const scheduledAt = result.scheduledAt || row.scheduled_at;
+  await supabase
+    .from("facebook_queue")
+    .update({
+      status: "scheduled",
+      scheduled_at: scheduledAt,
+      fb_post_id: result.id,
+      error: null
+    })
+    .eq("id", row.id);
+
+  markFacebookPosted(row.news_id, result.id);
+
+  if (updatePublishStatus) {
+    await updatePublishStatus(row.news_id, {
+      facebook: { published: true, id: result.id }
+    });
+  }
+
+  log("info", "Facebook: native scheduled", {
+    newsId: row.news_id,
+    fbPostId: result.id,
+    scheduledAt
+  });
+
+  return { ok: true, id: result.id, scheduledAt };
+}
+
+/**
+ * Enqueue + schedule one news item on Facebook (idempotent on news_id).
  *
  * @param {import("@supabase/supabase-js").SupabaseClient} supabase
  * @param {object} opts
@@ -87,8 +142,8 @@ export function buildQueuedFacebookText({ facebookPost, hashtags, newsId }) {
  * @param {string} opts.facebookPost
  * @param {string} [opts.hashtags]
  * @param {string} [opts.imageUrl]
+ * @param {(newsId: number|string, publishResults: object) => Promise<void>} [opts.updatePublishStatus]
  * @param {(level: string, message: string, meta?: object) => void} [log]
- * @returns {Promise<{ queued: boolean, scheduledAt?: string, reason?: string }>}
  */
 export async function enqueueFacebookNews(supabase, opts, log = () => {}) {
   const newsId = opts.newsId;
@@ -112,7 +167,7 @@ export async function enqueueFacebookNews(supabase, opts, log = () => {}) {
 
   const { data: existing, error: existingErr } = await supabase
     .from("facebook_queue")
-    .select("id, scheduled_at, status")
+    .select("id, scheduled_at, status, fb_post_id, post_text, image_url, news_id")
     .eq("news_id", newsId)
     .maybeSingle();
 
@@ -125,6 +180,47 @@ export async function enqueueFacebookNews(supabase, opts, log = () => {}) {
   }
 
   if (existing) {
+    // Retry native schedule if we only saved locally before.
+    if (
+      (existing.status === "pending" || existing.status === "failed") &&
+      !existing.fb_post_id
+    ) {
+      try {
+        const scheduled = await scheduleRowOnFacebook(
+          supabase,
+          existing,
+          opts.updatePublishStatus,
+          log
+        );
+        if (scheduled.ok) {
+          return {
+            queued: true,
+            scheduledAt: scheduled.scheduledAt,
+            fbPostId: scheduled.id,
+            native: true
+          };
+        }
+        return {
+          queued: false,
+          reason: scheduled.reason || "schedule_skipped",
+          scheduledAt: existing.scheduled_at
+        };
+      } catch (err) {
+        await supabase
+          .from("facebook_queue")
+          .update({
+            status: "failed",
+            error: String(err.message || err).slice(0, 500)
+          })
+          .eq("id", existing.id);
+        log("warn", "Facebook native schedule retry failed", {
+          newsId,
+          message: err.message
+        });
+        return { queued: false, reason: err.message };
+      }
+    }
+
     return {
       queued: false,
       reason: "already_queued",
@@ -146,7 +242,7 @@ export async function enqueueFacebookNews(supabase, opts, log = () => {}) {
   const { data, error } = await supabase
     .from("facebook_queue")
     .insert(row)
-    .select("id, scheduled_at, status")
+    .select("id, scheduled_at, status, post_text, image_url, news_id, fb_post_id")
     .single();
 
   if (error) {
@@ -160,29 +256,54 @@ export async function enqueueFacebookNews(supabase, opts, log = () => {}) {
     return { queued: false, reason: error.message };
   }
 
-  log("info", "Facebook queue: enqueued", {
+  log("info", "Facebook queue: enqueued locally", {
     newsId,
-    scheduledAt: data.scheduled_at,
-    status: data.status
+    scheduledAt: data.scheduled_at
   });
 
-  return { queued: true, scheduledAt: data.scheduled_at };
+  try {
+    const scheduled = await scheduleRowOnFacebook(
+      supabase,
+      data,
+      opts.updatePublishStatus,
+      log
+    );
+    if (scheduled.ok) {
+      return {
+        queued: true,
+        scheduledAt: scheduled.scheduledAt,
+        fbPostId: scheduled.id,
+        native: true
+      };
+    }
+    return {
+      queued: true,
+      scheduledAt: data.scheduled_at,
+      reason: scheduled.reason || "schedule_deferred",
+      native: false
+    };
+  } catch (err) {
+    await supabase
+      .from("facebook_queue")
+      .update({
+        status: "failed",
+        error: String(err.message || err).slice(0, 500)
+      })
+      .eq("id", data.id);
+    log("warn", "Facebook native schedule failed", {
+      newsId,
+      message: err.message
+    });
+    return { queued: false, reason: err.message, scheduledAt: data.scheduled_at };
+  }
 }
 
 /**
- * Enqueue Admin / orphan news rows that have no facebook_queue entry yet
- * and are not already posted (B5).
- *
- * @param {import("@supabase/supabase-js").SupabaseClient} supabase
- * @param {object} [opts]
- * @param {number} [opts.limit]
- * @param {(level: string, message: string, meta?: object) => void} [log]
- * @returns {Promise<number>} number newly queued
+ * Backfill Admin / orphan news into native Facebook schedule.
  */
 export async function enqueueMissingNewsForFacebook(supabase, opts = {}, log = () => {}) {
-  const limit = opts.limit ?? envInt("FACEBOOK_QUEUE_BACKFILL_LIMIT", 20);
+  const limit = opts.limit ?? envInt("FACEBOOK_QUEUE_BACKFILL_LIMIT", 10);
 
-  // Recent news without a queue row and without fb_post_id.
   const { data: newsRows, error } = await supabase
     .from("news")
     .select("id, facebook_post, urdu_summary, urdu_title, hashtags, image_url, fb_post_id")
@@ -215,7 +336,6 @@ export async function enqueueMissingNewsForFacebook(supabase, opts = {}, log = (
   const queuedSet = new Set((queued || []).map((r) => String(r.news_id)));
   let added = 0;
 
-  // Oldest-first among candidates so schedule order is natural.
   const candidates = newsRows
     .filter((r) => !queuedSet.has(String(r.id)) && !wasFacebookPosted(r.id))
     .sort((a, b) => Number(a.id) - Number(b.id))
@@ -230,46 +350,55 @@ export async function enqueueMissingNewsForFacebook(supabase, opts = {}, log = (
         newsId: row.id,
         facebookPost,
         hashtags: row.hashtags || "",
-        imageUrl: row.image_url || ""
+        imageUrl: row.image_url || "",
+        updatePublishStatus: opts.updatePublishStatus
       },
       log
     );
-    if (result.queued) added += 1;
+    if (result.queued && result.native) added += 1;
   }
 
   if (added > 0) {
-    log("info", "Facebook queue: backfilled admin/orphan news", { added });
+    log("info", "Facebook: backfilled native schedules", { added });
   }
 
   return added;
 }
 
 /**
- * Publish due pending queue rows (scheduled_at <= now).
+ * Retry pending/failed queue rows that are not yet on Facebook Scheduled.
+ * Also mark past `scheduled` rows as `posted` (FB already went live).
  *
  * @param {import("@supabase/supabase-js").SupabaseClient} supabase
  * @param {(newsId: number|string, publishResults: object) => Promise<void>} updatePublishStatus
  * @param {(level: string, message: string, meta?: object) => void} [log]
- * @returns {Promise<{ posted: number, failed: number, skipped: number }>}
  */
 export async function processFacebookQueue(supabase, updatePublishStatus, log = () => {}) {
-  const maxPerRun = envInt("FACEBOOK_MAX_POSTS_PER_RUN", 1);
+  const maxPerRun = envInt("FACEBOOK_MAX_SCHEDULES_PER_RUN", 10);
   const nowIso = new Date().toISOString();
+
+  // Mark schedules whose time has passed as posted (FB already published them).
+  await supabase
+    .from("facebook_queue")
+    .update({ status: "posted", posted_at: nowIso })
+    .eq("status", "scheduled")
+    .lte("scheduled_at", nowIso)
+    .not("fb_post_id", "is", null);
 
   const { data: due, error } = await supabase
     .from("facebook_queue")
-    .select("id, news_id, post_text, image_url, scheduled_at")
-    .eq("status", "pending")
-    .lte("scheduled_at", nowIso)
+    .select("id, news_id, post_text, image_url, scheduled_at, status, fb_post_id")
+    .in("status", ["pending", "failed"])
+    .is("fb_post_id", null)
     .order("scheduled_at", { ascending: true })
     .limit(maxPerRun);
 
   if (error) {
     log("warn", "facebook_queue process: select failed", { message: error.message });
-    return { posted: 0, failed: 0, skipped: 0 };
+    return { posted: 0, failed: 0, skipped: 0, scheduled: 0 };
   }
 
-  let posted = 0;
+  let scheduled = 0;
   let failed = 0;
   let skipped = 0;
 
@@ -287,46 +416,30 @@ export async function processFacebookQueue(supabase, updatePublishStatus, log = 
       continue;
     }
 
-    try {
-      const result = await publishToFacebook({
-        facebookPost: row.post_text,
-        imageUrl: row.image_url || undefined,
-        newsId: row.news_id,
-        // post_text already has caption → URL → hashtags
-        rawMessage: true
-      });
+    // Ensure schedule time still meets Meta's +10 minute rule.
+    const schedMs = Date.parse(row.scheduled_at);
+    const minMs = Date.now() + FACEBOOK_MIN_SCHEDULE_AHEAD_MS;
+    const effectiveAt =
+      Number.isFinite(schedMs) && schedMs >= minMs
+        ? new Date(schedMs)
+        : new Date(minMs);
 
-      if (result.skipped) {
+    try {
+      const result = await scheduleRowOnFacebook(
+        supabase,
+        { ...row, scheduled_at: effectiveAt.toISOString() },
+        updatePublishStatus,
+        log
+      );
+      if (result.ok) {
+        scheduled += 1;
+      } else if (result.skipped) {
         skipped += 1;
-        log("info", "Facebook queue: deferred by throttle", {
+        log("info", "Facebook schedule deferred by throttle", {
           newsId: row.news_id,
           reason: result.reason
         });
-        continue;
       }
-
-      const postedAt = new Date().toISOString();
-      await supabase
-        .from("facebook_queue")
-        .update({
-          status: "posted",
-          posted_at: postedAt,
-          fb_post_id: result.id,
-          error: null
-        })
-        .eq("id", row.id);
-
-      markFacebookPosted(row.news_id, result.id);
-      await updatePublishStatus(row.news_id, {
-        facebook: { published: true, id: result.id }
-      });
-
-      posted += 1;
-      log("info", "Facebook queue: posted", {
-        newsId: row.news_id,
-        fbPostId: result.id,
-        scheduledAt: row.scheduled_at
-      });
     } catch (err) {
       failed += 1;
       await supabase
@@ -336,12 +449,12 @@ export async function processFacebookQueue(supabase, updatePublishStatus, log = 
           error: String(err.message || err).slice(0, 500)
         })
         .eq("id", row.id);
-      log("warn", "Facebook queue: publish failed", {
+      log("warn", "Facebook native schedule failed", {
         newsId: row.news_id,
         message: err.message
       });
     }
   }
 
-  return { posted, failed, skipped };
+  return { posted: 0, failed, skipped, scheduled };
 }
