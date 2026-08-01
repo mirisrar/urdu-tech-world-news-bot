@@ -26,8 +26,10 @@
         // tags, and urdu_title as the on-page heading.
         document.title = `${article.seo_title || article.urdu_title} — Nexora News Urdu`;
 
+        const credit = (article.image_credit || "").trim();
         container.innerHTML = `
           <img src="${resolveImageUrl(article.image_url)}" alt="${article.urdu_title}" />
+          ${credit ? `<p class="image-credit">${credit}</p>` : ""}
           <span class="category-tag">${article.category}</span>
           <h1>${article.urdu_title}</h1>
           <span class="meta">${article.source} • ${formatRelativeTime(article.created_at)}</span>
