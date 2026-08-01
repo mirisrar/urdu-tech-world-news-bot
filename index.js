@@ -379,31 +379,21 @@ async function publishAndRecord(newsId, item, sourceName, aiResult, imageUrl) {
           newsId,
           facebookPost: aiResult.facebookPost,
           hashtags: aiResult.hashtags,
-          imageUrl,
-          updatePublishStatus
+          imageUrl
         },
         log
       );
-      if (queued.queued && queued.native && queued.fbPostId) {
-        results.facebook = {
-          published: true,
-          id: queued.fbPostId,
-          scheduled: true,
-          scheduledAt: queued.scheduledAt
-        };
-      } else if (queued.queued) {
-        results.facebook = {
-          published: false,
-          skipped: true,
-          reason: `fb_schedule_pending_${queued.scheduledAt || queued.reason || ""}`
-        };
-      } else {
-        results.facebook = {
-          published: false,
-          skipped: true,
-          reason: queued.reason || "queue_skip"
-        };
-      }
+      results.facebook = queued.queued
+        ? {
+            published: false,
+            skipped: true,
+            reason: `queued_until_${queued.scheduledAt}`
+          }
+        : {
+            published: false,
+            skipped: true,
+            reason: queued.reason || "queue_skip"
+          };
     }
 
     if (results.facebook?.published && results.facebook.id) {
@@ -733,26 +723,22 @@ async function run() {
     websiteBaseUrl: process.env.WEBSITE_BASE_URL || "https://www.nexoranewsurdu.com"
   });
 
-  // B5: Admin / orphan news → Facebook native Scheduled (staggered).
+  // B5: Admin / orphan news → same Facebook queue (5-min stagger).
   if (isFacebookQueueEnabled()) {
     try {
-      await enqueueMissingNewsForFacebook(
-        supabase,
-        { updatePublishStatus },
-        log
-      );
+      await enqueueMissingNewsForFacebook(supabase, {}, log);
     } catch (error) {
-      log("warn", "Facebook schedule backfill failed", { message: error.message });
+      log("warn", "Facebook queue backfill failed", { message: error.message });
     }
   }
 
-  // Retry any pending queue rows not yet on Facebook Scheduled.
+  // B4: post anything whose scheduled_at is due.
   if (isFacebookQueueEnabled()) {
     try {
       const queueStats = await processFacebookQueue(supabase, updatePublishStatus, log);
-      log("info", "Facebook schedule process", queueStats);
+      log("info", "Facebook queue process", queueStats);
     } catch (error) {
-      log("warn", "Facebook schedule process failed", { message: error.message });
+      log("warn", "Facebook queue process failed", { message: error.message });
     }
   }
 
@@ -805,15 +791,15 @@ async function run() {
     log("warn", "Publish retry step failed", { message: error.message });
   }
 
-  // Retry schedules again after new items were enqueued this run.
+  // Drain due Facebook queue again after new items were enqueued this run.
   if (isFacebookQueueEnabled()) {
     try {
       const queueStats = await processFacebookQueue(supabase, updatePublishStatus, log);
-      if (queueStats.scheduled || queueStats.failed) {
-        log("info", "Facebook schedule process (post-run)", queueStats);
+      if (queueStats.posted || queueStats.failed) {
+        log("info", "Facebook queue process (post-run)", queueStats);
       }
     } catch (error) {
-      log("warn", "Facebook schedule process (post-run) failed", {
+      log("warn", "Facebook queue process (post-run) failed", {
         message: error.message
       });
     }
