@@ -144,9 +144,74 @@ export const FALLBACK_IMAGE_POOLS = {
 const VAGUE_CATEGORIES = new Set(["default", "pakistan", "general", "news", "local"]);
 
 /**
+ * Aggregator / wire labels that must NOT influence topic scoring.
+ * ("Google News" previously matched technology via the keyword "google".)
+ */
+const SOURCE_TOPIC_NOISE_RE =
+  /\bgoogle\s*news\b|\bnewsapi\b|\byahoo\s*news\b|\bmsn\s*news\b|\brss\b|\bagency\b/gi;
+
+/**
+ * True when `word` appears as a whole word/phrase in `text` (not a substring).
+ * @param {string} text
+ * @param {string} word
+ */
+export function textHasTopicKeyword(text, word) {
+  const escaped = String(word || "")
+    .toLowerCase()
+    .trim()
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    .replace(/\s+/g, "\\s+");
+  if (!escaped) return false;
+  return new RegExp(`(?:^|[^a-z0-9])${escaped}(?:[^a-z0-9]|$)`, "i").test(text);
+}
+
+/**
+ * Strip aggregator brand noise before scoring source names.
+ * @param {string} [sourceName]
+ */
+export function sanitizeSourceForTopicScoring(sourceName = "") {
+  return String(sourceName || "")
+    .replace(SOURCE_TOPIC_NOISE_RE, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
  * Keyword → topic scoring for English headlines.
  */
 const TOPIC_KEYWORDS = [
+  {
+    // Crime / counter-terror / LEAs — keep on Pakistan visual pool, never tech.
+    topic: "pakistan",
+    weight: 4,
+    words: [
+      "ctd",
+      "raw agent",
+      "raw agents",
+      "arrest",
+      "arrests",
+      "arrested",
+      "ied",
+      "ieds",
+      "terror",
+      "terrorist",
+      "police",
+      "fia",
+      "isi",
+      "intelligence",
+      "explosive",
+      "suspect",
+      "raid",
+      "ibos",
+      "counter terror",
+      "law enforcement",
+      "okara",
+      "karachi",
+      "lahore",
+      "islamabad",
+      "punjab police"
+    ]
+  },
   {
     topic: "sports",
     weight: 3,
@@ -180,11 +245,11 @@ const TOPIC_KEYWORDS = [
       "technology",
       "iphone",
       "android",
-      "google",
+      // Do NOT include bare "google" — matches "Google News" aggregators.
+      "google pixel",
       "apple",
       "microsoft",
       "software",
-      "app",
       "cyber",
       "chip",
       "semiconductor",
@@ -194,7 +259,9 @@ const TOPIC_KEYWORDS = [
       "smartphone",
       "5g",
       "internet",
-      "blockchain"
+      "blockchain",
+      "motherboard",
+      "circuit board"
     ]
   },
   {
@@ -413,13 +480,14 @@ export function normalizeFallbackCategory(category) {
  * @returns {{ topic: string, score: number }}
  */
 export function scoreTitleTopic(title = "", sourceName = "") {
-  const text = ` ${String(title || "")} ${String(sourceName || "")} `.toLowerCase();
+  const cleanSource = sanitizeSourceForTopicScoring(sourceName);
+  const text = ` ${String(title || "")} ${cleanSource} `.toLowerCase();
   let best = { topic: "default", score: 0 };
 
   for (const entry of TOPIC_KEYWORDS) {
     let score = 0;
     for (const word of entry.words) {
-      if (text.includes(word.toLowerCase())) {
+      if (textHasTopicKeyword(text, word)) {
         score += entry.weight;
       }
     }
