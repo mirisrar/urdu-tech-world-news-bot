@@ -143,9 +143,22 @@ export function stripCaptionExtras(text, siteLink = "") {
 }
 
 /**
+ * Normalize image attribution for Facebook (one short line).
+ * @param {string} [imageCredit]
+ * @returns {string}
+ */
+export function formatFacebookImageCredit(imageCredit = "") {
+  const raw = String(imageCredit || "").trim();
+  if (!raw) return "";
+  // Avoid duplicating a credit line if AI caption already mentioned it.
+  return raw.slice(0, 120);
+}
+
+/**
  * Build Facebook caption in exact owner order:
  *   {caption}
  *   {website URL}
+ *   {image credit}   ← Image: BBC / Photo: Name / Unsplash
  *   #tag1 #tag2 #tag3
  *
  * Hashtags must NEVER appear before the URL.
@@ -153,16 +166,24 @@ export function stripCaptionExtras(text, siteLink = "") {
  * @param {string} facebookPost
  * @param {string|string[]|undefined|null} hashtags
  * @param {string} [websiteUrl]
+ * @param {string} [imageCredit]
  * @returns {string}
  */
-export function buildFacebookMessage(facebookPost, hashtags, websiteUrl = "") {
+export function buildFacebookMessage(
+  facebookPost,
+  hashtags,
+  websiteUrl = "",
+  imageCredit = ""
+) {
   const siteLink = cleanWebsiteLink(websiteUrl);
   const caption = stripCaptionExtras(facebookPost, siteLink);
   const tagLine = normalizeHashtags(hashtags);
+  const creditLine = formatFacebookImageCredit(imageCredit);
 
   const parts = [];
   if (caption) parts.push(caption);
   if (siteLink) parts.push(siteLink);
+  if (creditLine) parts.push(creditLine);
   if (tagLine) parts.push(tagLine);
   return parts.join("\n\n");
 }
@@ -195,6 +216,7 @@ export async function publishToFacebook({
   facebookPost,
   hashtags,
   imageUrl,
+  imageCredit,
   sourceUrl,
   newsId,
   websiteUrl,
@@ -225,7 +247,7 @@ export async function publishToFacebook({
   const siteArticleUrl = String(websiteUrl || "").trim() || buildWebsiteArticleUrl(newsId);
   const message = rawMessage
     ? String(facebookPost || "").trim()
-    : buildFacebookMessage(facebookPost, hashtags, siteArticleUrl);
+    : buildFacebookMessage(facebookPost, hashtags, siteArticleUrl, imageCredit);
   if (!message) {
     throw new Error("publishToFacebook: 'facebookPost' text is required");
   }

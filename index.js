@@ -181,17 +181,45 @@ async function loadRecentTitles() {
 }
 
 /**
- * Build image_credit for AdSense-safe attribution.
+ * Prefer the human publisher name for attribution.
+ * e.g. "Google News PK / Dawn" → "Dawn", "BBC" → "BBC".
+ * @param {string} [sourceName]
+ */
+export function publisherDisplayName(sourceName = "") {
+  const raw = String(sourceName || "").trim();
+  if (!raw) return "";
+  const parts = raw.split(/\s*\/\s*/).map((p) => p.trim()).filter(Boolean);
+  if (parts.length >= 2) {
+    // Drop aggregator prefixes (Google News / NewsAPI) — keep last publisher.
+    const last = parts[parts.length - 1];
+    if (!/google\s*news|newsapi/i.test(last)) return last;
+  }
+  return parts[0] || raw;
+}
+
+/**
+ * Build image_credit for on-site + social attribution.
+ * Publisher photos (BBC / Al Jazeera / Dawn…): "Image: {Publisher}"
+ * Stock: keep Unsplash/Pexels photographer credit when provided.
+ *
  * @param {string} sourceName
  * @param {"rss"|"meta"|"unsplash"|"pexels"|string} imageSource
  * @param {string} [imageCredit]
  */
-function resolveImageCredit(sourceName, imageSource, imageCredit = "") {
+export function resolveImageCredit(sourceName, imageSource, imageCredit = "") {
   const explicit = String(imageCredit || "").trim();
-  if (explicit) return explicit;
-  if (imageSource === "unsplash") return "Source: Unsplash";
-  if (imageSource === "pexels") return "Source: Pexels";
-  if (sourceName) return `Source: ${sourceName}`;
+  if (explicit) {
+    // Normalize bare "Source: X" from older paths to "Image: X".
+    const sourceMatch = explicit.match(/^Source:\s*(.+)$/i);
+    if (sourceMatch && imageSource !== "unsplash" && imageSource !== "pexels") {
+      return `Image: ${publisherDisplayName(sourceMatch[1]) || sourceMatch[1]}`;
+    }
+    return explicit;
+  }
+  if (imageSource === "unsplash") return "Photo: Unsplash";
+  if (imageSource === "pexels") return "Photo: Pexels";
+  const publisher = publisherDisplayName(sourceName);
+  if (publisher) return `Image: ${publisher}`;
   return "";
 }
 
@@ -339,7 +367,7 @@ async function updatePublishStatus(newsId, publishResults) {
  * and a publishing hiccup shouldn't be treated the same as a processing
  * failure (it doesn't count against `failed` in the run summary).
  */
-async function publishAndRecord(newsId, item, sourceName, aiResult, imageUrl) {
+async function publishAndRecord(newsId, item, sourceName, aiResult, imageUrl, imageCredit = "") {
   try {
     const skipFacebook = wasFacebookPosted(newsId);
     const useQueue = isFacebookQueueEnabled();
@@ -356,6 +384,7 @@ async function publishAndRecord(newsId, item, sourceName, aiResult, imageUrl) {
         facebookPost: aiResult.facebookPost,
         hashtags: aiResult.hashtags,
         imageUrl,
+        imageCredit,
         sourceUrl: item.link,
         newsId
       },
@@ -380,6 +409,7 @@ async function publishAndRecord(newsId, item, sourceName, aiResult, imageUrl) {
           facebookPost: aiResult.facebookPost,
           hashtags: aiResult.hashtags,
           imageUrl,
+          imageCredit,
           updatePublishStatus
         },
         log
@@ -534,7 +564,7 @@ async function processItem(item, sourceName) {
       imageCredit
     );
     log("info", "News saved with full AI analysis", { title: item.title, source: sourceName });
-    await publishAndRecord(newsId, item, sourceName, aiPreview, imageStored);
+    await publishAndRecord(newsId, item, sourceName, aiPreview, imageStored, imageCredit);
     return "processed";
   }
 
@@ -568,7 +598,7 @@ async function processItem(item, sourceName) {
   const newsId = await saveNews(item, sourceName, aiResult, imageUrl, imageCredit);
   log("info", "News saved with full AI analysis", { title: item.title, source: sourceName });
 
-  await publishAndRecord(newsId, item, sourceName, aiResult, imageUrl);
+  await publishAndRecord(newsId, item, sourceName, aiResult, imageUrl, imageCredit);
 
   return "processed";
 }

@@ -78,9 +78,9 @@ export async function nextFacebookScheduleAt(supabase) {
  * @param {string} [opts.hashtags]
  * @param {string|number} opts.newsId
  */
-export function buildQueuedFacebookText({ facebookPost, hashtags, newsId }) {
+export function buildQueuedFacebookText({ facebookPost, hashtags, newsId, imageCredit }) {
   const websiteUrl = buildWebsiteArticleUrl(newsId);
-  return buildFacebookMessage(facebookPost, hashtags, websiteUrl);
+  return buildFacebookMessage(facebookPost, hashtags, websiteUrl, imageCredit);
 }
 
 /**
@@ -142,6 +142,7 @@ async function scheduleRowOnFacebook(supabase, row, updatePublishStatus, log = (
  * @param {string} opts.facebookPost
  * @param {string} [opts.hashtags]
  * @param {string} [opts.imageUrl]
+ * @param {string} [opts.imageCredit]
  * @param {(newsId: number|string, publishResults: object) => Promise<void>} [opts.updatePublishStatus]
  * @param {(level: string, message: string, meta?: object) => void} [log]
  */
@@ -158,7 +159,8 @@ export async function enqueueFacebookNews(supabase, opts, log = () => {}) {
   const postText = buildQueuedFacebookText({
     facebookPost: opts.facebookPost,
     hashtags: opts.hashtags,
-    newsId
+    newsId,
+    imageCredit: opts.imageCredit
   });
 
   if (!postText.trim()) {
@@ -306,7 +308,7 @@ export async function enqueueMissingNewsForFacebook(supabase, opts = {}, log = (
 
   const { data: newsRows, error } = await supabase
     .from("news")
-    .select("id, facebook_post, urdu_summary, urdu_title, hashtags, image_url, fb_post_id")
+    .select("id, facebook_post, urdu_summary, urdu_title, hashtags, image_url, image_credit, fb_post_id")
     .is("fb_post_id", null)
     .order("id", { ascending: false })
     .limit(Math.max(limit * 3, 40));
@@ -351,6 +353,7 @@ export async function enqueueMissingNewsForFacebook(supabase, opts = {}, log = (
         facebookPost,
         hashtags: row.hashtags || "",
         imageUrl: row.image_url || "",
+        imageCredit: row.image_credit || "",
         updatePublishStatus: opts.updatePublishStatus
       },
       log
