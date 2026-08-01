@@ -19,7 +19,9 @@ const parser = new Parser({
       ["content:encoded", "contentEncoded"],
       ["media:content", "mediaContent", { keepArray: true }],
       ["media:thumbnail", "mediaThumbnail", { keepArray: true }],
-      ["media:group", "mediaGroup", { keepArray: true }]
+      ["media:group", "mediaGroup", { keepArray: true }],
+      // Preserve <source url="…"> from Google News so we can prefer publisher pages.
+      ["source", "rssSource"]
     ]
   }
 });
@@ -353,6 +355,13 @@ export async function resolveArticleImage(item, log = () => {}, options = {}) {
   for (const pub of extractPublisherLinksFromHtml(item.rawHtml || item.description || "")) {
     pageCandidates.push(pub);
   }
+  // Google News items often include <source url="https://www.dawn.com"> —
+  // try guessed publisher article URLs before falling back to stock.
+  if (item.publisherHome) {
+    for (const guess of guessPublisherArticleUrls(item.publisherHome, item.title)) {
+      pageCandidates.push(guess);
+    }
+  }
 
   const tried = new Set();
   for (const pageUrl of pageCandidates) {
@@ -458,6 +467,56 @@ export function parseGoogleNewsTitle(title) {
 }
 
 /**
+ * Pull publisher homepage URL from Google News <source url="…"> when present.
+ * @param {object} item
+ * @returns {string}
+ */
+export function extractRssSourceUrl(item) {
+  const source = item?.rssSource || item?.source;
+  if (!source) return "";
+  if (typeof source === "string") {
+    return /^https?:\/\//i.test(source) ? source.trim() : "";
+  }
+  const url = source?.$?.url || source?.url || "";
+  return /^https?:\/\//i.test(String(url)) ? String(url).trim() : "";
+}
+
+/**
+ * Guess a publisher article URL slug from an English headline (best-effort).
+ * Used when Google News blocks/wraps the real link but we know the domain
+ * (e.g. dawn.com) — callers still verify via og:image fetch.
+ * @param {string} publisherHome
+ * @param {string} title
+ * @returns {string[]}
+ */
+export function guessPublisherArticleUrls(publisherHome, title) {
+  const home = String(publisherHome || "").trim().replace(/\/+$/, "");
+  if (!home || !/^https?:\/\//i.test(home)) return [];
+  const slug = String(title || "")
+    .toLowerCase()
+    .replace(/['’]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+  if (!slug) return [];
+
+  const host = home.replace(/^https?:\/\//i, "").replace(/\/.*$/, "");
+  const guesses = [];
+
+  if (/dawn\.com$/i.test(host)) {
+    // Dawn uses /news/{id}/{slug}; id unknown — skip guess (Cloudflare + id).
+    return [];
+  }
+  if (/tribune\.com\.pk$/i.test(host)) {
+    guesses.push(`${home}/story/${slug}`);
+  }
+  if (/geo\.tv$/i.test(host)) {
+    guesses.push(`${home}/latest/${slug}-1`);
+  }
+  return guesses.filter(Boolean);
+}
+
+/**
  * Normalize an RSS item into the shared collector item shape.
  */
 export function normalizeRssItem(item, options = {}) {
@@ -472,6 +531,7 @@ export function normalizeRssItem(item, options = {}) {
   }
 
   const imageCandidates = extractRssImageCandidates(item);
+  const publisherHome = extractRssSourceUrl(item);
 
   return {
     title,
@@ -481,7 +541,8 @@ export function normalizeRssItem(item, options = {}) {
     imageHint: imageCandidates[0] || "",
     imageCandidates,
     rawHtml: item.contentEncoded || item.content || item.description || "",
-    publisher
+    publisher,
+    publisherHome
   };
 }
 

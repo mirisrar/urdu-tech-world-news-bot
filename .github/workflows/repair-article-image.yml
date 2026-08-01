@@ -1,0 +1,39 @@
+name: Repair article image
+
+on:
+  workflow_dispatch:
+    inputs:
+      news_id:
+        description: "news.id to repair (e.g. 2836)"
+        required: true
+        type: string
+      source_page_url:
+        description: "Optional publisher article URL for og:image"
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm install
+
+      - name: Repair image
+        run: node scripts/repair-article-image.js
+        env:
+          NEWS_ID: ${{ inputs.news_id }}
+          SOURCE_PAGE_URL: ${{ inputs.source_page_url }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_STORAGE_BUCKET: ${{ secrets.SUPABASE_STORAGE_BUCKET }}
+          UNSPLASH_ACCESS_KEY: ${{ secrets.UNSPLASH_ACCESS_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          STOCK_IMAGE_PROVIDER: "auto"
