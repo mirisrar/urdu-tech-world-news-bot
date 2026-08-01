@@ -155,6 +155,26 @@ export function extractRssImageCandidates(item) {
  * @param {string} [baseUrl]
  * @returns {string}
  */
+/**
+ * Resolve a possibly-relative image candidate against baseUrl.
+ * @param {string} raw
+ * @param {string} [baseUrl]
+ */
+function absolutizeImageCandidate(raw, baseUrl = "") {
+  let url = normalizeImageUrl(raw);
+  if (url) return url;
+  const value = String(raw || "").trim();
+  if (!value || !baseUrl) return "";
+  if (value.startsWith("/") || value.startsWith("./")) {
+    try {
+      return normalizeImageUrl(new URL(value, baseUrl).toString());
+    } catch {
+      return "";
+    }
+  }
+  return "";
+}
+
 export function extractMetaImageFromHtml(html, baseUrl = "") {
   if (!html || typeof html !== "string") return "";
 
@@ -171,14 +191,24 @@ export function extractMetaImageFromHtml(html, baseUrl = "") {
   for (const re of patterns) {
     const match = html.match(re);
     if (!match?.[1]) continue;
-    let url = normalizeImageUrl(match[1]);
-    if (!url && baseUrl && match[1].startsWith("/")) {
-      try {
-        url = normalizeImageUrl(new URL(match[1], baseUrl).toString());
-      } catch {
-        url = "";
-      }
-    }
+    const url = absolutizeImageCandidate(match[1], baseUrl);
+    if (url) return url;
+  }
+
+  // Lazy-load / deferred images (data-src, data-lazy-src, data-original, …).
+  const lazyPatterns = [
+    /<img[^>]+data-src=["']([^"']+)["'][^>]*>/i,
+    /<img[^>]+data-lazy-src=["']([^"']+)["'][^>]*>/i,
+    /<img[^>]+data-original=["']([^"']+)["'][^>]*>/i,
+    /<img[^>]+data-lazy=["']([^"']+)["'][^>]*>/i,
+    /<img[^>]+data-bg=["']([^"']+)["'][^>]*>/i,
+    /<img[^>]+srcset=["']([^"'\s,]+)[^"']*["'][^>]*>/i
+  ];
+
+  for (const re of lazyPatterns) {
+    const match = html.match(re);
+    if (!match?.[1]) continue;
+    const url = absolutizeImageCandidate(match[1], baseUrl);
     if (url) return url;
   }
 
@@ -225,16 +255,22 @@ export async function fetchOgImageFromPage(articleUrl, log = () => {}) {
       return "";
     }
 
-    // Only need <head> — cap download size.
+    // Prefer <head> meta, but keep reading into <body> for lazy-load images.
     const reader = response.body?.getReader?.();
     let html = "";
     if (reader) {
       const decoder = new TextDecoder("utf-8");
-      while (html.length < 200_000) {
+      while (html.length < 400_000) {
         const { done, value } = await reader.read();
         if (done) break;
         html += decoder.decode(value, { stream: true });
-        if (/<\/head>/i.test(html)) break;
+        // Stop early once we already have a usable meta/lazy image candidate.
+        if (
+          html.length > 80_000 &&
+          extractMetaImageFromHtml(html, response.url || url)
+        ) {
+          break;
+        }
       }
       try {
         reader.cancel();

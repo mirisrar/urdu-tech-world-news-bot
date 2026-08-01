@@ -61,7 +61,10 @@ function normalizeHashtags(hashtags) {
  * @returns {string} absolute URL, or "" if WEBSITE_BASE_URL / id missing
  */
 export function buildWebsiteArticleUrl(newsId) {
-  const base = String(process.env.WEBSITE_BASE_URL || "")
+  // Default production site when secret is unset (handoff: nexoranewsurdu.com).
+  const base = String(
+    process.env.WEBSITE_BASE_URL || "https://www.nexoranewsurdu.com"
+  )
     .trim()
     .replace(/\/+$/, "");
   if (!base || newsId === null || newsId === undefined || newsId === "") {
@@ -85,35 +88,83 @@ export function buildWebsiteArticleUrl(newsId) {
 }
 
 /**
- * Build the Facebook caption: post text + hashtags + website article link.
+ * Clean a website URL for the caption (no leading # / whitespace).
+ * @param {string} url
+ * @returns {string}
+ */
+export function cleanWebsiteLink(url) {
+  return String(url || "")
+    .trim()
+    .replace(/^#+/, "")
+    .trim();
+}
+
+/**
+ * Strip site URLs and trailing hashtag-only lines from AI caption so we can
+ * rebuild the exact order: caption → URL → hashtags.
+ * @param {string} text
+ * @param {string} [siteLink]
+ * @returns {string}
+ */
+export function stripCaptionExtras(text, siteLink = "") {
+  let caption = String(text || "").trim();
+  const link = cleanWebsiteLink(siteLink);
+
+  if (link) {
+    caption = caption.split(link).join(" ");
+  }
+  caption = caption
+    .replace(/https?:\/\/(?:www\.)?nexoranewsurdu\.com\/[^\s#]*/gi, " ")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  const lines = caption.split(/\n/);
+  while (lines.length > 0) {
+    const last = lines[lines.length - 1].trim();
+    if (!last) {
+      lines.pop();
+      continue;
+    }
+    // Drop a trailing line that is only hashtags.
+    if (/^(#[\w\u0600-\u06FF_]+(?:\s+#[\w\u0600-\u06FF_]+)*)+$/u.test(last)) {
+      lines.pop();
+      continue;
+    }
+    break;
+  }
+
+  caption = lines.join("\n").trim();
+  // Drop trailing inline hashtags on the last paragraph.
+  caption = caption
+    .replace(/(?:\s+#[\w\u0600-\u06FF_]+)+\s*$/u, "")
+    .trim();
+  return caption;
+}
+
+/**
+ * Build Facebook caption in exact owner order:
+ *   {caption}
+ *   {website URL}
+ *   #tag1 #tag2 #tag3
+ *
+ * Hashtags must NEVER appear before the URL.
+ *
  * @param {string} facebookPost
  * @param {string|string[]|undefined|null} hashtags
  * @param {string} [websiteUrl]
  * @returns {string}
  */
 export function buildFacebookMessage(facebookPost, hashtags, websiteUrl = "") {
-  let message = String(facebookPost || "").trim();
+  const siteLink = cleanWebsiteLink(websiteUrl);
+  const caption = stripCaptionExtras(facebookPost, siteLink);
   const tagLine = normalizeHashtags(hashtags);
-  const siteLink = String(websiteUrl || "").trim();
 
-  if (tagLine) {
-    const messageLower = message.toLowerCase();
-    const allPresent = tagLine
-      .split(/\s+/)
-      .every((tag) => messageLower.includes(tag.toLowerCase()));
-    if (!allPresent) {
-      message = message ? `${message}\n\n${tagLine}` : tagLine;
-    }
-  }
-
-  if (siteLink) {
-    // Avoid duplicating if the AI post already ends with the same URL.
-    if (!message.includes(siteLink)) {
-      message = message ? `${message}\n\n${siteLink}` : siteLink;
-    }
-  }
-
-  return message;
+  const parts = [];
+  if (caption) parts.push(caption);
+  if (siteLink) parts.push(siteLink);
+  if (tagLine) parts.push(tagLine);
+  return parts.join("\n\n");
 }
 
 /**
@@ -131,6 +182,7 @@ export function buildFacebookMessage(facebookPost, hashtags, websiteUrl = "") {
  * @param {string} [payload.sourceUrl] - Original publisher URL (fallback link only).
  * @param {string|number} [payload.newsId] - Supabase news id for website URL.
  * @param {string} [payload.websiteUrl] - Prebuilt website article URL (optional).
+ * @param {boolean} [payload.rawMessage] - If true, post facebookPost as-is (queue path).
  * @returns {Promise<{ published: true, id: string }|{ published: false, skipped: true, reason: string }>}
  * @throws {Error} If required env vars are missing, the request fails, or Facebook returns an error.
  */
@@ -140,7 +192,8 @@ export async function publishToFacebook({
   imageUrl,
   sourceUrl,
   newsId,
-  websiteUrl
+  websiteUrl,
+  rawMessage = false
 }) {
   const pageId = process.env.FACEBOOK_PAGE_ID;
   const accessToken = process.env.FACEBOOK_PAGE_ACCESS_TOKEN;
@@ -157,7 +210,9 @@ export async function publishToFacebook({
   }
 
   const siteArticleUrl = String(websiteUrl || "").trim() || buildWebsiteArticleUrl(newsId);
-  const message = buildFacebookMessage(facebookPost, hashtags, siteArticleUrl);
+  const message = rawMessage
+    ? String(facebookPost || "").trim()
+    : buildFacebookMessage(facebookPost, hashtags, siteArticleUrl);
   if (!message) {
     throw new Error("publishToFacebook: 'facebookPost' text is required");
   }

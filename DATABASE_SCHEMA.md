@@ -23,9 +23,12 @@ Yeh **shared** table hai — news bot (`index.js`, `service_role`) aur Nexora Ad
 | `reading_time` | `integer` (default `2`) | Admin | Minutes — Admin form field |
 | `source` | `text` (nullable, default `'Manual'`) | Bot (Admin optional) | Feed/source name; Admin posts default to `Manual` |
 | `url` | `text` (nullable, unique when set) | Bot (Admin optional) | Original article URL — duplicate key for bot |
-| `seo_title` | `text` | Bot | AI SEO title (Phase 3) |
+| `seo_title` | `text` | Bot + Admin | AI SEO title |
+| `seo_description` | `text` | Bot + Admin | Meta description (website) |
+| `seo_keywords` | `text` | Bot + Admin | Comma-separated keywords |
+| `image_credit` | `text` | Bot (+ Admin) | e.g. `Source: PTV News` / Unsplash credit |
 | `facebook_post` | `text` | Bot | AI Facebook-ready text |
-| `image_prompt` | `text` | Bot | AI image prompt |
+| `image_prompt` | `text` | Bot | AI image prompt (unused) |
 | `fb_post_id` | `text` | Bot | Facebook publish id |
 | `telegram_message_id` | `text` | Bot | Telegram publish id |
 | `whatsapp_status` | `text` | Bot | WhatsApp publish status |
@@ -47,6 +50,9 @@ ALTER TABLE news ADD COLUMN IF NOT EXISTS reading_time integer DEFAULT 2;
 
 -- Bot / AI / publish columns
 ALTER TABLE news ADD COLUMN IF NOT EXISTS seo_title text;
+ALTER TABLE news ADD COLUMN IF NOT EXISTS seo_description text;
+ALTER TABLE news ADD COLUMN IF NOT EXISTS seo_keywords text;
+ALTER TABLE news ADD COLUMN IF NOT EXISTS image_credit text;
 ALTER TABLE news ADD COLUMN IF NOT EXISTS facebook_post text;
 ALTER TABLE news ADD COLUMN IF NOT EXISTS image_prompt text;
 ALTER TABLE news ADD COLUMN IF NOT EXISTS fb_post_id text;
@@ -68,6 +74,12 @@ CREATE INDEX IF NOT EXISTS news_created_at_idx ON news (created_at DESC);
 ```
 
 Bot pehle se missing optional columns ke liye `writeWithColumnFallback()` use karta hai (Postgres `42703`) — lekin Admin CMS usually fail-hard karta hai, isliye yeh migration **Admin ke liye zaroori** hai (`views` / `featured` / `reading_time`, aur nullable `source`/`url`).
+
+### Facebook queue + SEO extras (bot handoff B2–B5)
+
+Canonical file: [`website-integration/database/facebook-queue.sql`](./website-integration/database/facebook-queue.sql)
+
+Creates `facebook_queue` (`news_id`, `status`, `scheduled_at`, `posted_at`, `post_text`, …) and adds `seo_description` / `seo_keywords` / `image_credit` on `news` if missing. **Run once in Supabase SQL editor** before enabling `FACEBOOK_USE_QUEUE=true`.
 
 ### Storage bucket (Phase 5 + Admin uploads)
 

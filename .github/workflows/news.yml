@@ -2,8 +2,8 @@ name: News Bot
 
 on:
   schedule:
-    # Every 10 minutes — 1 Facebook post per run (see FACEBOOK_* below).
-    - cron: "*/10 * * * *"
+    # Every 5 minutes — Facebook queue posts due items (1 per run, 5-min stagger).
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 concurrency:
@@ -50,15 +50,16 @@ jobs:
           STOCK_IMAGE_PROVIDER: "auto"
           UNSPLASH_ACCESS_KEY: ${{ secrets.UNSPLASH_ACCESS_KEY }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
-          # Nexora website article URL — appended on every Facebook caption.
-          # Set WEBSITE_BASE_URL in repo Secrets (e.g. https://your-domain.com).
+          # Nexora website article URL in Facebook caption (after text, before #tags).
+          # Secret optional — code defaults to https://www.nexoranewsurdu.com
           WEBSITE_BASE_URL: ${{ secrets.WEBSITE_BASE_URL }}
           WEBSITE_ARTICLE_PATH: "/article.html?id={id}"
-          # Facebook: resume posting — 1 post every ~10 minutes (cron + min gap).
-          # Pause cleared. Daily cap ~144 matches 10-min cadence over 24h.
-          FACEBOOK_MAX_POSTS_PER_DAY: "144"
+          # Facebook queue: stagger posts every 5 minutes (see facebook_queue table).
+          FACEBOOK_USE_QUEUE: "true"
+          FACEBOOK_SCHEDULE_GAP_MS: "300000"
+          FACEBOOK_MAX_POSTS_PER_DAY: "288"
           FACEBOOK_MAX_POSTS_PER_RUN: "1"
-          FACEBOOK_MIN_GAP_MS: "600000"
+          FACEBOOK_MIN_GAP_MS: "300000"
           FACEBOOK_POST_INTERVAL_MS: "0"
           # Phase 9 — title dedupe + DB publish retry (no Redis).
           TITLE_DEDUPE_LOOKBACK: "200"
