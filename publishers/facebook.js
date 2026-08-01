@@ -239,9 +239,13 @@ export async function publishToFacebook({
       throw new Error("publishToFacebook: invalid scheduleAt");
     }
     // Meta: scheduled_publish_time must be >= ~10 minutes from now.
-    const minMs = Date.now() + 10 * 60 * 1000;
+    // Do NOT silently bump to now+10 here — that collapses a batch onto
+    // the same minute. Caller (facebookQueue) must pass staggered times.
+    const minMs = Date.now() + 10 * 60 * 1000 - 5000; // 5s clock skew grace
     if (scheduleDate.getTime() < minMs) {
-      scheduleDate = new Date(minMs);
+      throw new Error(
+        `publishToFacebook: scheduleAt must be >= ~10 minutes ahead (got ${scheduleDate.toISOString()})`
+      );
     }
   }
 

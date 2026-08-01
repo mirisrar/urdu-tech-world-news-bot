@@ -47,18 +47,27 @@ export function isFacebookQueueEnabled() {
 /**
  * Next schedule time: max(now+10min, last_scheduled + gap).
  * @param {import("@supabase/supabase-js").SupabaseClient} supabase
+ * @param {{ excludeId?: string|number }} [opts] - ignore this queue row when reading last slot
  * @returns {Promise<Date>}
  */
-export async function nextFacebookScheduleAt(supabase) {
+export async function nextFacebookScheduleAt(supabase, opts = {}) {
   const gap = facebookScheduleGapMs();
   const earliest = Date.now() + FACEBOOK_MIN_SCHEDULE_AHEAD_MS;
 
-  const { data, error } = await supabase
+  // Only consider near-future / active slots (not ancient pending times).
+  let query = supabase
     .from("facebook_queue")
     .select("scheduled_at")
+    .in("status", ["pending", "scheduled"])
+    .gte("scheduled_at", new Date(Date.now() - gap).toISOString())
     .order("scheduled_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(1);
+
+  if (opts.excludeId !== undefined && opts.excludeId !== null) {
+    query = query.neq("id", opts.excludeId);
+  }
+
+  const { data, error } = await query.maybeSingle();
 
   if (error) {
     return new Date(earliest);
@@ -92,12 +101,33 @@ export function buildQueuedFacebookText({ facebookPost, hashtags, newsId }) {
  * @param {(level: string, message: string, meta?: object) => void} [log]
  */
 async function scheduleRowOnFacebook(supabase, row, updatePublishStatus, log = () => {}) {
+  const minMs = Date.now() + FACEBOOK_MIN_SCHEDULE_AHEAD_MS;
+  let scheduleAt = row.scheduled_at ? new Date(row.scheduled_at) : null;
+
+  // Past / too-soon times must be re-staggered. Never bump every row to the
+  // same now+10m (that made Facebook publish them all together).
+  if (
+    !scheduleAt ||
+    !Number.isFinite(scheduleAt.getTime()) ||
+    scheduleAt.getTime() < minMs
+  ) {
+    scheduleAt = await nextFacebookScheduleAt(supabase, { excludeId: row.id });
+    await supabase
+      .from("facebook_queue")
+      .update({
+        scheduled_at: scheduleAt.toISOString(),
+        status: "pending",
+        error: null
+      })
+      .eq("id", row.id);
+  }
+
   const result = await publishToFacebook({
     facebookPost: row.post_text,
     imageUrl: row.image_url || undefined,
     newsId: row.news_id,
     rawMessage: true,
-    scheduleAt: row.scheduled_at,
+    scheduleAt,
     skipGapThrottle: true
   });
 
@@ -105,7 +135,7 @@ async function scheduleRowOnFacebook(supabase, row, updatePublishStatus, log = (
     return { ok: false, skipped: true, reason: result.reason };
   }
 
-  const scheduledAt = result.scheduledAt || row.scheduled_at;
+  const scheduledAt = result.scheduledAt || scheduleAt.toISOString();
   await supabase
     .from("facebook_queue")
     .update({
@@ -416,18 +446,11 @@ export async function processFacebookQueue(supabase, updatePublishStatus, log = 
       continue;
     }
 
-    // Ensure schedule time still meets Meta's +10 minute rule.
-    const schedMs = Date.parse(row.scheduled_at);
-    const minMs = Date.now() + FACEBOOK_MIN_SCHEDULE_AHEAD_MS;
-    const effectiveAt =
-      Number.isFinite(schedMs) && schedMs >= minMs
-        ? new Date(schedMs)
-        : new Date(minMs);
-
     try {
+      // scheduleRowOnFacebook re-staggers (+10m min, then +gap each).
       const result = await scheduleRowOnFacebook(
         supabase,
-        { ...row, scheduled_at: effectiveAt.toISOString() },
+        row,
         updatePublishStatus,
         log
       );
