@@ -183,7 +183,12 @@ export function buildFacebookMessage(facebookPost, hashtags, websiteUrl = "") {
  * @param {string|number} [payload.newsId] - Supabase news id for website URL.
  * @param {string} [payload.websiteUrl] - Prebuilt website article URL (optional).
  * @param {boolean} [payload.rawMessage] - If true, post facebookPost as-is (queue path).
- * @returns {Promise<{ published: true, id: string }|{ published: false, skipped: true, reason: string }>}
+ * @param {Date|string|number} [payload.scheduleAt] - If set, create a Facebook
+ *   **native Scheduled** post (`published=false` + `scheduled_publish_time`).
+ *   Must be at least ~10 minutes in the future (Meta rule).
+ * @param {boolean} [payload.skipGapThrottle] - Skip min-gap / per-run slot (used when
+ *   creating many native schedules in one bot run).
+ * @returns {Promise<{ published: true, id: string, scheduled?: boolean, scheduledAt?: string }|{ published: false, skipped: true, reason: string }>}
  * @throws {Error} If required env vars are missing, the request fails, or Facebook returns an error.
  */
 export async function publishToFacebook({
@@ -193,7 +198,9 @@ export async function publishToFacebook({
   sourceUrl,
   newsId,
   websiteUrl,
-  rawMessage = false
+  rawMessage = false,
+  scheduleAt = null,
+  skipGapThrottle = false
 }) {
   const pageId = process.env.FACEBOOK_PAGE_ID;
   const accessToken = process.env.FACEBOOK_PAGE_ACCESS_TOKEN;
@@ -204,9 +211,15 @@ export async function publishToFacebook({
 
   // Soft-skip when paused / daily cap / min gap / per-run quota — caller
   // treats skipped as "try again later", not a hard fail.
+  // Native schedule mode skips gap/slot (stagger is in scheduleAt).
   const skipReason = getFacebookSkipReason();
   if (skipReason) {
-    return { published: false, skipped: true, reason: skipReason };
+    const isGapOrRun =
+      String(skipReason).startsWith("min_gap") ||
+      String(skipReason).startsWith("max_per_run");
+    if (!(scheduleAt && skipGapThrottle && isGapOrRun)) {
+      return { published: false, skipped: true, reason: skipReason };
+    }
   }
 
   const siteArticleUrl = String(websiteUrl || "").trim() || buildWebsiteArticleUrl(newsId);
@@ -217,11 +230,27 @@ export async function publishToFacebook({
     throw new Error("publishToFacebook: 'facebookPost' text is required");
   }
 
-  await waitForFacebookInterval();
+  /** @type {Date|null} */
+  let scheduleDate = null;
+  if (scheduleAt) {
+    scheduleDate =
+      scheduleAt instanceof Date ? scheduleAt : new Date(scheduleAt);
+    if (!Number.isFinite(scheduleDate.getTime())) {
+      throw new Error("publishToFacebook: invalid scheduleAt");
+    }
+    // Meta: scheduled_publish_time must be >= ~10 minutes from now.
+    const minMs = Date.now() + 10 * 60 * 1000;
+    if (scheduleDate.getTime() < minMs) {
+      scheduleDate = new Date(minMs);
+    }
+  }
 
-  const slot = consumeFacebookAttemptSlot();
-  if (!slot.ok) {
-    return { published: false, skipped: true, reason: slot.reason };
+  if (!scheduleDate || !skipGapThrottle) {
+    await waitForFacebookInterval();
+    const slot = consumeFacebookAttemptSlot();
+    if (!slot.ok) {
+      return { published: false, skipped: true, reason: slot.reason };
+    }
   }
 
   // Prefer the website article URL for Graph `link`; fall back to source.
@@ -242,6 +271,15 @@ export async function publishToFacebook({
     if (linkUrl) {
       params.set("link", linkUrl);
     }
+  }
+
+  if (scheduleDate) {
+    // Native Facebook Scheduled post — shows under Page → Scheduled.
+    params.set("published", "false");
+    params.set(
+      "scheduled_publish_time",
+      String(Math.floor(scheduleDate.getTime() / 1000))
+    );
   }
 
   let response;
@@ -265,5 +303,10 @@ export async function publishToFacebook({
   }
 
   noteFacebookSuccess();
-  return { published: true, id: postId };
+  return {
+    published: true,
+    id: postId,
+    scheduled: Boolean(scheduleDate),
+    scheduledAt: scheduleDate ? scheduleDate.toISOString() : undefined
+  };
 }

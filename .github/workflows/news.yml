@@ -2,7 +2,7 @@ name: News Bot
 
 on:
   schedule:
-    # Every 5 minutes — Facebook queue posts due items (1 per run, 5-min stagger).
+    # Every 5 minutes — create Facebook *native Scheduled* posts (staggered).
     - cron: "*/5 * * * *"
   workflow_dispatch:
 
@@ -54,9 +54,12 @@ jobs:
           # Secret optional — code defaults to https://www.nexoranewsurdu.com
           WEBSITE_BASE_URL: ${{ secrets.WEBSITE_BASE_URL }}
           WEBSITE_ARTICLE_PATH: "/article.html?id={id}"
-          # Facebook queue: stagger posts every 5 minutes (see facebook_queue table).
+          # Facebook native Scheduled (Meta Scheduled tab):
+          # published=false + scheduled_publish_time; slots every 5 min
+          # (first post always >= +10 min — Meta minimum).
           FACEBOOK_USE_QUEUE: "true"
           FACEBOOK_SCHEDULE_GAP_MS: "300000"
+          FACEBOOK_MAX_SCHEDULES_PER_RUN: "10"
           FACEBOOK_MAX_POSTS_PER_DAY: "288"
           FACEBOOK_MAX_POSTS_PER_RUN: "1"
           FACEBOOK_MIN_GAP_MS: "300000"
