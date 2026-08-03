@@ -392,7 +392,7 @@ async function publishAndRecord(newsId, item, sourceName, aiResult, imageUrl, im
 
     // Facebook: enqueue for 5-min stagger (B4). Other channels still publish now.
     const onlyChannels = skipFacebookChannel || useQueue
-      ? ["telegram", "whatsapp", "x"]
+      ? ["whatsapp"]
       : undefined;
 
     const results = await publishAll(

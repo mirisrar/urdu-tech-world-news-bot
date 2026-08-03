@@ -96,6 +96,9 @@ jobs:
           FACEBOOK_PAGE_ACCESS_TOKEN: ${{ secrets.FACEBOOK_PAGE_ACCESS_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          # Outbound scrape→channel posts OFF for now (editor ingest still uses token).
+          PUBLISH_TELEGRAM: "false"
+          PUBLISH_X: "false"
           # Editor ingest (photo+caption → inbox). Comma-separated Telegram user ids.
           TELEGRAM_EDITOR_IDS: ${{ secrets.TELEGRAM_EDITOR_IDS }}
           TELEGRAM_INGEST_ENABLED: "true"

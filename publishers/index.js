@@ -31,6 +31,20 @@ const CHANNELS = [
   }
 ];
 
+/**
+ * Per-channel kill switches (default: telegram + x OFF for now).
+ * Set PUBLISH_TELEGRAM=true / PUBLISH_X=true to re-enable.
+ */
+function isChannelPublishingEnabled(name) {
+  const envKey = `PUBLISH_${String(name).toUpperCase()}`;
+  const raw = process.env[envKey];
+  if (raw === undefined || raw === "") {
+    if (name === "telegram" || name === "x") return false;
+    return true;
+  }
+  return !["0", "false", "no", "off"].includes(String(raw).toLowerCase());
+}
+
 function isChannelConfigured(channel) {
   return channel.requiredEnv.every((key) => Boolean(process.env[key]));
 }
@@ -39,7 +53,9 @@ function isChannelConfigured(channel) {
  * @returns {string[]} configured channel names
  */
 export function listConfiguredChannels() {
-  return CHANNELS.filter(isChannelConfigured).map((channel) => channel.name);
+  return CHANNELS.filter(
+    (channel) => isChannelConfigured(channel) && isChannelPublishingEnabled(channel.name)
+  ).map((channel) => channel.name);
 }
 
 /**
@@ -59,6 +75,15 @@ export async function publishAll(payload, options = {}) {
   for (const channel of CHANNELS) {
     if (only && !only.has(channel.name)) {
       results[channel.name] = { published: false, skipped: true };
+      continue;
+    }
+
+    if (!isChannelPublishingEnabled(channel.name)) {
+      results[channel.name] = {
+        published: false,
+        skipped: true,
+        reason: `publish_${channel.name}_disabled`
+      };
       continue;
     }
 
