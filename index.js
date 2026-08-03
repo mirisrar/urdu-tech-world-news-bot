@@ -38,6 +38,10 @@ import {
   getFacebookImportantCategories
 } from "./publishers/facebookEligibility.js";
 import { isFacebookStoriesEnabled } from "./publishers/facebookStories.js";
+import {
+  ingestTelegramEditorMessages,
+  isTelegramIngestEnabled
+} from "./telegramIngest.js";
 
 // Phase 6: the website (Nexora News Urdu) now reads the `news` table
 // directly from the browser using the Supabase JS SDK + SUPABASE_ANON_KEY.
@@ -785,8 +789,17 @@ async function run() {
     skipIfNoTopicImage: SKIP_IF_NO_TOPIC_IMAGE,
     hasStockImageProvider: hasStockImageProvider(),
     hasServiceRoleKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
-    websiteBaseUrl: process.env.WEBSITE_BASE_URL || "https://www.nexoranewsurdu.com"
+    websiteBaseUrl: process.env.WEBSITE_BASE_URL || "https://www.nexoranewsurdu.com",
+    telegramIngestEnabled: isTelegramIngestEnabled()
   });
+
+  // Phase 1 — Telegram editor inbox (photo + title/article → pending queue).
+  try {
+    const tgIngest = await ingestTelegramEditorMessages(supabase, log);
+    log("info", "Telegram editor ingest", tgIngest);
+  } catch (error) {
+    log("warn", "Telegram editor ingest failed", { message: error.message });
+  }
 
   // B5: Admin / orphan news → Facebook native Scheduled (staggered).
   if (isFacebookQueueEnabled()) {
