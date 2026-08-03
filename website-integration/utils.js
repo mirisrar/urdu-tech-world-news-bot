@@ -63,3 +63,87 @@ export function excerpt(text, maxLength = 150) {
 export function articleUrl(article) {
   return `/article.html?id=${encodeURIComponent(article.id)}`;
 }
+
+/**
+ * Sets / updates a <meta> (or <link>) tag by `id`, or creates it in <head>.
+ * @param {string} id
+ * @param {string} attr
+ * @param {string} value
+ * @param {string} [tagName="meta"]
+ */
+function setHeadTag(id, attr, value, tagName = "meta") {
+  if (value == null || value === "") return;
+  let el = document.getElementById(id);
+  if (!el) {
+    el = document.createElement(tagName);
+    el.id = id;
+    if (tagName === "meta" && id.startsWith("og-")) {
+      el.setAttribute("property", id.replace(/^og-/, "og:").replace("og:headline", "og:title"));
+    } else if (tagName === "meta" && id.startsWith("twitter-")) {
+      el.setAttribute("name", id.replace(/^twitter-/, "twitter:"));
+    } else if (tagName === "meta" && id === "meta-description") {
+      el.setAttribute("name", "description");
+    } else if (tagName === "meta" && id === "meta-keywords") {
+      el.setAttribute("name", "keywords");
+    } else if (tagName === "link") {
+      el.setAttribute("rel", "canonical");
+    }
+    document.head.appendChild(el);
+  }
+  el.setAttribute(attr, value);
+}
+
+/**
+ * Applies DB SEO fields to document title + meta / Open Graph / Twitter tags.
+ * Expects article rows that include seo_title, seo_description, seo_keywords
+ * (see newsApi PUBLIC_COLUMNS). Safe to call after getArticleById().
+ *
+ * Live Nexora site: mirror this in js/article.js updateSeo(), and ensure
+ * js/api.js NEWS_DETAIL_COLUMNS selects seo_title, seo_description, seo_keywords.
+ *
+ * @param {object} article
+ * @param {object} [options]
+ * @param {string} [options.brand="Nexora News Urdu"]
+ * @param {string} [options.fallbackImage]
+ */
+export function applyArticleSeoMeta(article, options = {}) {
+  if (!article || typeof document === "undefined") return;
+
+  const brand = options.brand || "Nexora News Urdu";
+  const seoTitle = (
+    article.seo_title ||
+    article.urdu_title ||
+    article.title ||
+    brand
+  ).trim();
+  const seoDescription = (
+    article.seo_description ||
+    article.urdu_summary ||
+    ""
+  )
+    .trim()
+    .slice(0, 160);
+  const seoKeywords = String(article.seo_keywords || "").trim();
+  const rawImage = article.image_url || options.fallbackImage || "";
+  let seoImage = rawImage;
+  try {
+    if (rawImage && !/^https?:\/\//i.test(rawImage)) {
+      seoImage = new URL(rawImage, window.location.origin).href;
+    }
+  } catch (_) {
+    /* keep raw */
+  }
+  const seoUrl = typeof window !== "undefined" ? window.location.href : "";
+
+  document.title = `${seoTitle} — ${brand}`;
+  setHeadTag("meta-description", "content", seoDescription);
+  setHeadTag("meta-keywords", "content", seoKeywords);
+  setHeadTag("canonical-link", "href", seoUrl, "link");
+  setHeadTag("og-headline", "content", seoTitle);
+  setHeadTag("og-description", "content", seoDescription);
+  setHeadTag("og-image", "content", seoImage);
+  setHeadTag("og-url", "content", seoUrl);
+  setHeadTag("twitter-title", "content", seoTitle);
+  setHeadTag("twitter-description", "content", seoDescription);
+  setHeadTag("twitter-image", "content", seoImage);
+}
