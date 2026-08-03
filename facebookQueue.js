@@ -18,6 +18,11 @@ import {
   buildWebsiteArticleUrl,
   publishToFacebook
 } from "./publishers/facebook.js";
+import { evaluateFacebookEligibility } from "./publishers/facebookEligibility.js";
+import {
+  isFacebookStoriesEnabled,
+  publishFacebookPhotoStory
+} from "./publishers/facebookStories.js";
 import { markFacebookPosted, wasFacebookPosted } from "./publishState.js";
 
 /** Meta requires scheduled_publish_time at least ~10 minutes ahead. */
@@ -78,9 +83,9 @@ export async function nextFacebookScheduleAt(supabase) {
  * @param {string} [opts.hashtags]
  * @param {string|number} opts.newsId
  */
-export function buildQueuedFacebookText({ facebookPost, hashtags, newsId }) {
+export function buildQueuedFacebookText({ facebookPost, hashtags, newsId, imageCredit }) {
   const websiteUrl = buildWebsiteArticleUrl(newsId);
-  return buildFacebookMessage(facebookPost, hashtags, websiteUrl);
+  return buildFacebookMessage(facebookPost, hashtags, websiteUrl, imageCredit);
 }
 
 /**
@@ -142,6 +147,10 @@ async function scheduleRowOnFacebook(supabase, row, updatePublishStatus, log = (
  * @param {string} opts.facebookPost
  * @param {string} [opts.hashtags]
  * @param {string} [opts.imageUrl]
+ * @param {string} [opts.imageCredit]
+ * @param {string} [opts.category]
+ * @param {boolean} [opts.featured]
+ * @param {string|Date} [opts.createdAt]
  * @param {(newsId: number|string, publishResults: object) => Promise<void>} [opts.updatePublishStatus]
  * @param {(level: string, message: string, meta?: object) => void} [log]
  */
@@ -151,6 +160,21 @@ export async function enqueueFacebookNews(supabase, opts, log = () => {}) {
     return { queued: false, reason: "missing_news_id" };
   }
 
+  const eligibility = evaluateFacebookEligibility({
+    category: opts.category,
+    featured: opts.featured,
+    createdAt: opts.createdAt
+  });
+  if (!eligibility.ok) {
+    log("info", "Facebook: skipped (not important)", {
+      newsId,
+      reason: eligibility.reason,
+      category: opts.category || null,
+      featured: Boolean(opts.featured)
+    });
+    return { queued: false, reason: eligibility.reason };
+  }
+
   if (wasFacebookPosted(newsId)) {
     return { queued: false, reason: "already_posted_state" };
   }
@@ -158,7 +182,8 @@ export async function enqueueFacebookNews(supabase, opts, log = () => {}) {
   const postText = buildQueuedFacebookText({
     facebookPost: opts.facebookPost,
     hashtags: opts.hashtags,
-    newsId
+    newsId,
+    imageCredit: opts.imageCredit
   });
 
   if (!postText.trim()) {
@@ -306,10 +331,12 @@ export async function enqueueMissingNewsForFacebook(supabase, opts = {}, log = (
 
   const { data: newsRows, error } = await supabase
     .from("news")
-    .select("id, facebook_post, urdu_summary, urdu_title, hashtags, image_url, fb_post_id")
+    .select(
+      "id, facebook_post, urdu_summary, urdu_title, hashtags, image_url, image_credit, fb_post_id, category, featured, created_at"
+    )
     .is("fb_post_id", null)
     .order("id", { ascending: false })
-    .limit(Math.max(limit * 3, 40));
+    .limit(Math.max(limit * 8, 80));
 
   if (error) {
     log("warn", "facebook_queue backfill: could not load news", {
@@ -338,6 +365,13 @@ export async function enqueueMissingNewsForFacebook(supabase, opts = {}, log = (
 
   const candidates = newsRows
     .filter((r) => !queuedSet.has(String(r.id)) && !wasFacebookPosted(r.id))
+    .filter((r) =>
+      evaluateFacebookEligibility({
+        category: r.category,
+        featured: r.featured,
+        createdAt: r.created_at
+      }).ok
+    )
     .sort((a, b) => Number(a.id) - Number(b.id))
     .slice(0, limit);
 
@@ -351,6 +385,10 @@ export async function enqueueMissingNewsForFacebook(supabase, opts = {}, log = (
         facebookPost,
         hashtags: row.hashtags || "",
         imageUrl: row.image_url || "",
+        imageCredit: row.image_credit || "",
+        category: row.category,
+        featured: row.featured,
+        createdAt: row.created_at,
         updatePublishStatus: opts.updatePublishStatus
       },
       log
@@ -457,4 +495,97 @@ export async function processFacebookQueue(supabase, updatePublishStatus, log = 
   }
 
   return { posted: 0, failed, skipped, scheduled };
+}
+
+/**
+ * After a Feed post goes live (`status=posted`), publish a Page Photo Story.
+ * Does not fail the feed path — errors are logged on the queue row.
+ *
+ * @param {import("@supabase/supabase-js").SupabaseClient} supabase
+ * @param {(level: string, message: string, meta?: object) => void} [log]
+ */
+export async function processFacebookStories(supabase, log = () => {}) {
+  if (!isFacebookStoriesEnabled()) {
+    return { posted: 0, failed: 0, skipped: 0, disabled: true };
+  }
+
+  const maxPerRun = envInt("FACEBOOK_MAX_STORIES_PER_RUN", 5);
+  const nowIso = new Date().toISOString();
+
+  // Promote due schedules so stories can run in the same bot pass.
+  await supabase
+    .from("facebook_queue")
+    .update({ status: "posted", posted_at: nowIso })
+    .eq("status", "scheduled")
+    .lte("scheduled_at", nowIso)
+    .not("fb_post_id", "is", null);
+
+  const { data: due, error } = await supabase
+    .from("facebook_queue")
+    .select("id, news_id, image_url, status, fb_story_id, scheduled_at")
+    .eq("status", "posted")
+    .is("fb_story_id", null)
+    .not("image_url", "is", null)
+    .order("posted_at", { ascending: true })
+    .limit(maxPerRun);
+
+  if (error) {
+    // Older DBs may not have story columns yet — soft warn.
+    log("warn", "facebook_queue stories: select failed", { message: error.message });
+    return { posted: 0, failed: 0, skipped: 0, error: error.message };
+  }
+
+  let posted = 0;
+  let failed = 0;
+  let skipped = 0;
+
+  for (const row of due || []) {
+    if (!String(row.image_url || "").trim()) {
+      skipped += 1;
+      continue;
+    }
+
+    try {
+      const result = await publishFacebookPhotoStory({ imageUrl: row.image_url });
+      if (result.skipped) {
+        skipped += 1;
+        await supabase
+          .from("facebook_queue")
+          .update({
+            story_error: String(result.reason || "skipped").slice(0, 500)
+          })
+          .eq("id", row.id);
+        continue;
+      }
+
+      await supabase
+        .from("facebook_queue")
+        .update({
+          fb_story_id: result.id,
+          story_posted_at: new Date().toISOString(),
+          story_error: null
+        })
+        .eq("id", row.id);
+
+      posted += 1;
+      log("info", "Facebook: photo story published", {
+        newsId: row.news_id,
+        storyId: result.id
+      });
+    } catch (err) {
+      failed += 1;
+      await supabase
+        .from("facebook_queue")
+        .update({
+          story_error: String(err.message || err).slice(0, 500)
+        })
+        .eq("id", row.id);
+      log("warn", "Facebook story publish failed", {
+        newsId: row.news_id,
+        message: err.message
+      });
+    }
+  }
+
+  return { posted, failed, skipped };
 }

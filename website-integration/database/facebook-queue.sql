@@ -30,6 +30,9 @@ CREATE TABLE IF NOT EXISTS facebook_queue (
   post_text text,
   image_url text,
   error text,
+  fb_story_id text,
+  story_posted_at timestamptz,
+  story_error text,
   created_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT facebook_queue_news_id_unique UNIQUE (news_id)
 );

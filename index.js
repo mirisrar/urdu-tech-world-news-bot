@@ -29,8 +29,15 @@ import {
   enqueueMissingNewsForFacebook,
   isFacebookQueueEnabled,
   processFacebookQueue,
+  processFacebookStories,
   facebookScheduleGapMs
 } from "./facebookQueue.js";
+import {
+  evaluateFacebookEligibility,
+  isFacebookImportantFilterEnabled,
+  getFacebookImportantCategories
+} from "./publishers/facebookEligibility.js";
+import { isFacebookStoriesEnabled } from "./publishers/facebookStories.js";
 
 // Phase 6: the website (Nexora News Urdu) now reads the `news` table
 // directly from the browser using the Supabase JS SDK + SUPABASE_ANON_KEY.
@@ -181,17 +188,45 @@ async function loadRecentTitles() {
 }
 
 /**
- * Build image_credit for AdSense-safe attribution.
+ * Prefer the human publisher name for attribution.
+ * e.g. "Google News PK / Dawn" → "Dawn", "BBC" → "BBC".
+ * @param {string} [sourceName]
+ */
+export function publisherDisplayName(sourceName = "") {
+  const raw = String(sourceName || "").trim();
+  if (!raw) return "";
+  const parts = raw.split(/\s*\/\s*/).map((p) => p.trim()).filter(Boolean);
+  if (parts.length >= 2) {
+    // Drop aggregator prefixes (Google News / NewsAPI) — keep last publisher.
+    const last = parts[parts.length - 1];
+    if (!/google\s*news|newsapi/i.test(last)) return last;
+  }
+  return parts[0] || raw;
+}
+
+/**
+ * Build image_credit for on-site + social attribution.
+ * Publisher photos (BBC / Al Jazeera / Dawn…): "Image: {Publisher}"
+ * Stock: keep Unsplash/Pexels photographer credit when provided.
+ *
  * @param {string} sourceName
  * @param {"rss"|"meta"|"unsplash"|"pexels"|string} imageSource
  * @param {string} [imageCredit]
  */
-function resolveImageCredit(sourceName, imageSource, imageCredit = "") {
+export function resolveImageCredit(sourceName, imageSource, imageCredit = "") {
   const explicit = String(imageCredit || "").trim();
-  if (explicit) return explicit;
-  if (imageSource === "unsplash") return "Source: Unsplash";
-  if (imageSource === "pexels") return "Source: Pexels";
-  if (sourceName) return `Source: ${sourceName}`;
+  if (explicit) {
+    // Normalize bare "Source: X" from older paths to "Image: X".
+    const sourceMatch = explicit.match(/^Source:\s*(.+)$/i);
+    if (sourceMatch && imageSource !== "unsplash" && imageSource !== "pexels") {
+      return `Image: ${publisherDisplayName(sourceMatch[1]) || sourceMatch[1]}`;
+    }
+    return explicit;
+  }
+  if (imageSource === "unsplash") return "Photo: Unsplash";
+  if (imageSource === "pexels") return "Photo: Pexels";
+  const publisher = publisherDisplayName(sourceName);
+  if (publisher) return `Image: ${publisher}`;
   return "";
 }
 
@@ -339,13 +374,19 @@ async function updatePublishStatus(newsId, publishResults) {
  * and a publishing hiccup shouldn't be treated the same as a processing
  * failure (it doesn't count against `failed` in the run summary).
  */
-async function publishAndRecord(newsId, item, sourceName, aiResult, imageUrl) {
+async function publishAndRecord(newsId, item, sourceName, aiResult, imageUrl, imageCredit = "") {
   try {
     const skipFacebook = wasFacebookPosted(newsId);
     const useQueue = isFacebookQueueEnabled();
+    const fbEligibility = evaluateFacebookEligibility({
+      category: aiResult.category,
+      featured: false,
+      createdAt: new Date()
+    });
+    const skipFacebookChannel = skipFacebook || !fbEligibility.ok;
 
     // Facebook: enqueue for 5-min stagger (B4). Other channels still publish now.
-    const onlyChannels = skipFacebook || useQueue
+    const onlyChannels = skipFacebookChannel || useQueue
       ? ["telegram", "whatsapp", "x"]
       : undefined;
 
@@ -356,6 +397,7 @@ async function publishAndRecord(newsId, item, sourceName, aiResult, imageUrl) {
         facebookPost: aiResult.facebookPost,
         hashtags: aiResult.hashtags,
         imageUrl,
+        imageCredit,
         sourceUrl: item.link,
         newsId
       },
@@ -372,6 +414,12 @@ async function publishAndRecord(newsId, item, sourceName, aiResult, imageUrl) {
       if (priorId) {
         await updatePublishStatus(newsId, { facebook: { published: true, id: priorId } });
       }
+    } else if (!fbEligibility.ok) {
+      results.facebook = {
+        published: false,
+        skipped: true,
+        reason: fbEligibility.reason
+      };
     } else if (useQueue) {
       const queued = await enqueueFacebookNews(
         supabase,
@@ -380,6 +428,10 @@ async function publishAndRecord(newsId, item, sourceName, aiResult, imageUrl) {
           facebookPost: aiResult.facebookPost,
           hashtags: aiResult.hashtags,
           imageUrl,
+          imageCredit,
+          category: aiResult.category,
+          featured: false,
+          createdAt: new Date(),
           updatePublishStatus
         },
         log
@@ -534,7 +586,7 @@ async function processItem(item, sourceName) {
       imageCredit
     );
     log("info", "News saved with full AI analysis", { title: item.title, source: sourceName });
-    await publishAndRecord(newsId, item, sourceName, aiPreview, imageStored);
+    await publishAndRecord(newsId, item, sourceName, aiPreview, imageStored, imageCredit);
     return "processed";
   }
 
@@ -568,7 +620,7 @@ async function processItem(item, sourceName) {
   const newsId = await saveNews(item, sourceName, aiResult, imageUrl, imageCredit);
   log("info", "News saved with full AI analysis", { title: item.title, source: sourceName });
 
-  await publishAndRecord(newsId, item, sourceName, aiResult, imageUrl);
+  await publishAndRecord(newsId, item, sourceName, aiResult, imageUrl, imageCredit);
 
   return "processed";
 }
@@ -725,6 +777,9 @@ async function run() {
     facebookMinGapMs: fbCfg.minGapMs,
     facebookScheduleGapMs: facebookScheduleGapMs(),
     facebookUseQueue: isFacebookQueueEnabled(),
+    facebookImportantOnly: isFacebookImportantFilterEnabled(),
+    facebookImportantCategories: getFacebookImportantCategories(),
+    facebookStoriesEnabled: isFacebookStoriesEnabled(),
     facebookPauseUntil: fbCfg.pauseUntilIso || null,
     facebookBlocked: getFacebookBlockReason(),
     skipIfNoTopicImage: SKIP_IF_NO_TOPIC_IMAGE,
@@ -754,6 +809,14 @@ async function run() {
     } catch (error) {
       log("warn", "Facebook schedule process failed", { message: error.message });
     }
+  }
+
+  // Photo Stories for Feed posts that already went live.
+  try {
+    const storyStats = await processFacebookStories(supabase, log);
+    log("info", "Facebook stories process", storyStats);
+  } catch (error) {
+    log("warn", "Facebook stories process failed", { message: error.message });
   }
 
   const candidates = await collectItems();
