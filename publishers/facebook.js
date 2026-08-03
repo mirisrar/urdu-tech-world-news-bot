@@ -209,6 +209,8 @@ export function buildFacebookMessage(
  *   Must be at least ~10 minutes in the future (Meta rule).
  * @param {boolean} [payload.skipGapThrottle] - Skip min-gap / per-run slot (used when
  *   creating many native schedules in one bot run).
+ * @param {boolean} [payload.immediate] - Editor / manual path: publish now, bypass
+ *   drip throttle (pause still honored).
  * @returns {Promise<{ published: true, id: string, scheduled?: boolean, scheduledAt?: string }|{ published: false, skipped: true, reason: string }>}
  * @throws {Error} If required env vars are missing, the request fails, or Facebook returns an error.
  */
@@ -222,7 +224,8 @@ export async function publishToFacebook({
   websiteUrl,
   rawMessage = false,
   scheduleAt = null,
-  skipGapThrottle = false
+  skipGapThrottle = false,
+  immediate = false
 }) {
   const pageId = process.env.FACEBOOK_PAGE_ID;
   const accessToken = process.env.FACEBOOK_PAGE_ACCESS_TOKEN;
@@ -234,13 +237,21 @@ export async function publishToFacebook({
   // Soft-skip when paused / daily cap / min gap / per-run quota — caller
   // treats skipped as "try again later", not a hard fail.
   // Native schedule mode skips gap/slot (stagger is in scheduleAt).
+  // immediate=true bypasses drip (editor Telegram path).
   const skipReason = getFacebookSkipReason();
   if (skipReason) {
-    const isGapOrRun =
-      String(skipReason).startsWith("min_gap") ||
-      String(skipReason).startsWith("max_per_run");
-    if (!(scheduleAt && skipGapThrottle && isGapOrRun)) {
-      return { published: false, skipped: true, reason: skipReason };
+    const isPause = String(skipReason).startsWith("paused_until");
+    if (immediate) {
+      if (isPause) {
+        return { published: false, skipped: true, reason: skipReason };
+      }
+    } else {
+      const isGapOrRun =
+        String(skipReason).startsWith("min_gap") ||
+        String(skipReason).startsWith("max_per_run");
+      if (!(scheduleAt && skipGapThrottle && isGapOrRun)) {
+        return { published: false, skipped: true, reason: skipReason };
+      }
     }
   }
 
@@ -267,7 +278,7 @@ export async function publishToFacebook({
     }
   }
 
-  if (!scheduleDate || !skipGapThrottle) {
+  if (!immediate && (!scheduleDate || !skipGapThrottle)) {
     await waitForFacebookInterval();
     const slot = consumeFacebookAttemptSlot();
     if (!slot.ok) {

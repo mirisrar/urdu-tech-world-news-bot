@@ -60,7 +60,7 @@ async function optimizeImage(inputBuffer) {
     .toBuffer();
 }
 
-async function uploadToStorage(supabase, buffer, slug) {
+export async function uploadToStorage(supabase, buffer, slug) {
   const path = `${new Date().toISOString().slice(0, 10)}/${Date.now()}-${slug}.${OUTPUT_FORMAT}`;
 
   const { error: uploadError } = await supabase.storage.from(STORAGE_BUCKET).upload(path, buffer, {
@@ -78,6 +78,48 @@ async function uploadToStorage(supabase, buffer, slug) {
   }
 
   return data.publicUrl;
+}
+
+/**
+ * Download a remote image (e.g. Telegram file URL), optimize, upload to Storage.
+ * Falls back to the remote URL if Storage is unavailable.
+ *
+ * @param {object} supabase
+ * @param {string} remoteUrl
+ * @param {string} slugSource
+ * @param {(level: string, message: string, meta?: object) => void} [log]
+ * @returns {Promise<string>}
+ */
+export async function storeRemoteImage(supabase, remoteUrl, slugSource, log = () => {}) {
+  const sourceUrl = normalizeImageUrl(remoteUrl);
+  if (!sourceUrl) {
+    return DEFAULT_NEWS_PLACEHOLDER_IMAGE;
+  }
+
+  let rawImage;
+  try {
+    rawImage = await downloadImage(sourceUrl);
+  } catch (error) {
+    log("warn", "storeRemoteImage: download failed", { message: error.message });
+    return sourceUrl;
+  }
+
+  let optimized;
+  try {
+    optimized = await optimizeImage(rawImage);
+  } catch (error) {
+    log("warn", "storeRemoteImage: optimize failed", { message: error.message });
+    return sourceUrl;
+  }
+
+  try {
+    return await uploadToStorage(supabase, optimized, slugify(slugSource));
+  } catch (error) {
+    log("warn", "storeRemoteImage: upload failed — using remote URL", {
+      message: error.message
+    });
+    return sourceUrl;
+  }
 }
 
 /**

@@ -270,7 +270,7 @@ export async function ingestTelegramEditorMessages(supabase, log = () => {}) {
     try {
       await telegramSendMessage(
         chatId,
-        "✅ Received. Will publish to website + Facebook within ~5 minutes.",
+        "✅ Received — publishing to website + Facebook now (or next run ~5 min).",
         messageId
       );
     } catch (err) {

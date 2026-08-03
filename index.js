@@ -42,6 +42,7 @@ import {
   ingestTelegramEditorMessages,
   isTelegramIngestEnabled
 } from "./telegramIngest.js";
+import { processTelegramInbox } from "./telegramPublish.js";
 
 // Phase 6: the website (Nexora News Urdu) now reads the `news` table
 // directly from the browser using the Supabase JS SDK + SUPABASE_ANON_KEY.
@@ -799,6 +800,14 @@ async function run() {
     log("info", "Telegram editor ingest", tgIngest);
   } catch (error) {
     log("warn", "Telegram editor ingest failed", { message: error.message });
+  }
+
+  // Phase 2 — pending inbox → AI → website → Facebook Feed + Story (immediate).
+  try {
+    const tgPublish = await processTelegramInbox(supabase, log);
+    log("info", "Telegram editor publish", tgPublish);
+  } catch (error) {
+    log("warn", "Telegram editor publish failed", { message: error.message });
   }
 
   // B5: Admin / orphan news → Facebook native Scheduled (staggered).

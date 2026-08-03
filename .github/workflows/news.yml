@@ -99,6 +99,7 @@ jobs:
           # Editor ingest (photo+caption → inbox). Comma-separated Telegram user ids.
           TELEGRAM_EDITOR_IDS: ${{ secrets.TELEGRAM_EDITOR_IDS }}
           TELEGRAM_INGEST_ENABLED: "true"
+          TELEGRAM_PUBLISH_MAX_PER_RUN: "5"
           # Phase 8 — optional ops alert chat (falls back to TELEGRAM_CHAT_ID).
           # TELEGRAM_ALERT_MODE: always | failures | off (default always).
           TELEGRAM_ALERT_CHAT_ID: ${{ secrets.TELEGRAM_ALERT_CHAT_ID }}
