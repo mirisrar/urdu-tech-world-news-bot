@@ -29,7 +29,6 @@ import {
   enqueueMissingNewsForFacebook,
   isFacebookQueueEnabled,
   processFacebookQueue,
-  processFacebookStories,
   facebookScheduleGapMs
 } from "./facebookQueue.js";
 import {
@@ -37,7 +36,6 @@ import {
   isFacebookImportantFilterEnabled,
   getFacebookImportantCategories
 } from "./publishers/facebookEligibility.js";
-import { isFacebookStoriesEnabled } from "./publishers/facebookStories.js";
 import {
   ingestTelegramEditorMessages,
   isTelegramIngestEnabled
@@ -784,7 +782,6 @@ async function run() {
     facebookUseQueue: isFacebookQueueEnabled(),
     facebookImportantOnly: isFacebookImportantFilterEnabled(),
     facebookImportantCategories: getFacebookImportantCategories(),
-    facebookStoriesEnabled: isFacebookStoriesEnabled(),
     facebookPauseUntil: fbCfg.pauseUntilIso || null,
     facebookBlocked: getFacebookBlockReason(),
     skipIfNoTopicImage: SKIP_IF_NO_TOPIC_IMAGE,
@@ -802,7 +799,7 @@ async function run() {
     log("warn", "Telegram editor ingest failed", { message: error.message });
   }
 
-  // Phase 2 — pending inbox → AI → website → Facebook Feed + Story (immediate).
+  // Phase 2 — pending inbox → AI → website → Facebook Feed (immediate).
   try {
     const tgPublish = await processTelegramInbox(supabase, log);
     log("info", "Telegram editor publish", tgPublish);
@@ -831,14 +828,6 @@ async function run() {
     } catch (error) {
       log("warn", "Facebook schedule process failed", { message: error.message });
     }
-  }
-
-  // Photo Stories for Feed posts that already went live.
-  try {
-    const storyStats = await processFacebookStories(supabase, log);
-    log("info", "Facebook stories process", storyStats);
-  } catch (error) {
-    log("warn", "Facebook stories process failed", { message: error.message });
   }
 
   const candidates = await collectItems();

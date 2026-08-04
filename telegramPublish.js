@@ -1,5 +1,5 @@
 /**
- * Phase 2 — Process telegram_inbox → AI → website → Facebook Feed + Story (immediate).
+ * Phase 2 — Process telegram_inbox → AI → website → Facebook Feed (immediate).
  *
  * Editor submissions always go to Facebook (no important-category filter, no schedule).
  */
@@ -10,7 +10,6 @@ import {
   buildWebsiteArticleUrl,
   publishToFacebook
 } from "./publishers/facebook.js";
-import { publishFacebookPhotoStory } from "./publishers/facebookStories.js";
 import { markFacebookPosted } from "./publishState.js";
 import { telegramFileUrl, telegramSendMessage } from "./telegramApi.js";
 
@@ -181,9 +180,8 @@ export async function processTelegramInbox(supabase, log = () => {}) {
       const newsId = await insertEditorNews(supabase, row, aiResult, imageUrl);
       const websiteUrl = buildWebsiteArticleUrl(newsId);
 
-      // Facebook Feed — immediate (no schedule).
+      // Facebook Feed — immediate (no schedule). No Story posting.
       let fbPostId = "";
-      let storyId = "";
       let fbNote = "";
 
       if (process.env.FACEBOOK_PAGE_ID && process.env.FACEBOOK_PAGE_ACCESS_TOKEN) {
@@ -210,26 +208,6 @@ export async function processTelegramInbox(supabase, log = () => {}) {
             fb_post_id: fbPostId,
             published_at: new Date().toISOString()
           });
-
-          // Story immediately after feed.
-          try {
-            const story = await publishFacebookPhotoStory({ imageUrl });
-            if (story.published) {
-              storyId = story.id;
-            } else if (story.skipped) {
-              fbNote = [fbNote, `Story skipped: ${story.reason}`]
-                .filter(Boolean)
-                .join("; ");
-            }
-          } catch (storyErr) {
-            fbNote = [fbNote, `Story error: ${storyErr.message}`]
-              .filter(Boolean)
-              .join("; ");
-            log("warn", "Telegram editor: story failed", {
-              newsId,
-              message: storyErr.message
-            });
-          }
         }
       } else {
         fbNote = "Facebook not configured";
@@ -248,8 +226,7 @@ export async function processTelegramInbox(supabase, log = () => {}) {
       const replyLines = [
         "✅ Published",
         websiteUrl || `news id=${newsId}`,
-        fbPostId ? `Facebook: ${fbPostId}` : fbNote || "Facebook: pending",
-        storyId ? `Story: ${storyId}` : null
+        fbPostId ? `Facebook: ${fbPostId}` : fbNote || "Facebook: pending"
       ].filter(Boolean);
 
       try {
@@ -261,8 +238,7 @@ export async function processTelegramInbox(supabase, log = () => {}) {
       processed += 1;
       log("info", "Telegram editor published", {
         newsId,
-        fbPostId: fbPostId || null,
-        storyId: storyId || null
+        fbPostId: fbPostId || null
       });
     } catch (err) {
       failed += 1;

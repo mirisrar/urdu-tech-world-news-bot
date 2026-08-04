@@ -66,7 +66,7 @@ function helpText() {
     "",
     "Bot will (next run, ~5 min):",
     "• Save to website",
-    "• Post Facebook Feed + Story (immediate)",
+    "• Post Facebook Feed (immediate)",
     "",
     "Only allowlisted editors can post."
   ].join("\n");

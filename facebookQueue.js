@@ -19,10 +19,6 @@ import {
   publishToFacebook
 } from "./publishers/facebook.js";
 import { evaluateFacebookEligibility } from "./publishers/facebookEligibility.js";
-import {
-  isFacebookStoriesEnabled,
-  publishFacebookPhotoStory
-} from "./publishers/facebookStories.js";
 import { markFacebookPosted, wasFacebookPosted } from "./publishState.js";
 
 /** Meta requires scheduled_publish_time at least ~10 minutes ahead. */
@@ -495,97 +491,4 @@ export async function processFacebookQueue(supabase, updatePublishStatus, log = 
   }
 
   return { posted: 0, failed, skipped, scheduled };
-}
-
-/**
- * After a Feed post goes live (`status=posted`), publish a Page Photo Story.
- * Does not fail the feed path — errors are logged on the queue row.
- *
- * @param {import("@supabase/supabase-js").SupabaseClient} supabase
- * @param {(level: string, message: string, meta?: object) => void} [log]
- */
-export async function processFacebookStories(supabase, log = () => {}) {
-  if (!isFacebookStoriesEnabled()) {
-    return { posted: 0, failed: 0, skipped: 0, disabled: true };
-  }
-
-  const maxPerRun = envInt("FACEBOOK_MAX_STORIES_PER_RUN", 5);
-  const nowIso = new Date().toISOString();
-
-  // Promote due schedules so stories can run in the same bot pass.
-  await supabase
-    .from("facebook_queue")
-    .update({ status: "posted", posted_at: nowIso })
-    .eq("status", "scheduled")
-    .lte("scheduled_at", nowIso)
-    .not("fb_post_id", "is", null);
-
-  const { data: due, error } = await supabase
-    .from("facebook_queue")
-    .select("id, news_id, image_url, status, fb_story_id, scheduled_at")
-    .eq("status", "posted")
-    .is("fb_story_id", null)
-    .not("image_url", "is", null)
-    .order("posted_at", { ascending: true })
-    .limit(maxPerRun);
-
-  if (error) {
-    // Older DBs may not have story columns yet — soft warn.
-    log("warn", "facebook_queue stories: select failed", { message: error.message });
-    return { posted: 0, failed: 0, skipped: 0, error: error.message };
-  }
-
-  let posted = 0;
-  let failed = 0;
-  let skipped = 0;
-
-  for (const row of due || []) {
-    if (!String(row.image_url || "").trim()) {
-      skipped += 1;
-      continue;
-    }
-
-    try {
-      const result = await publishFacebookPhotoStory({ imageUrl: row.image_url });
-      if (result.skipped) {
-        skipped += 1;
-        await supabase
-          .from("facebook_queue")
-          .update({
-            story_error: String(result.reason || "skipped").slice(0, 500)
-          })
-          .eq("id", row.id);
-        continue;
-      }
-
-      await supabase
-        .from("facebook_queue")
-        .update({
-          fb_story_id: result.id,
-          story_posted_at: new Date().toISOString(),
-          story_error: null
-        })
-        .eq("id", row.id);
-
-      posted += 1;
-      log("info", "Facebook: photo story published", {
-        newsId: row.news_id,
-        storyId: result.id
-      });
-    } catch (err) {
-      failed += 1;
-      await supabase
-        .from("facebook_queue")
-        .update({
-          story_error: String(err.message || err).slice(0, 500)
-        })
-        .eq("id", row.id);
-      log("warn", "Facebook story publish failed", {
-        newsId: row.news_id,
-        message: err.message
-      });
-    }
-  }
-
-  return { posted, failed, skipped };
 }

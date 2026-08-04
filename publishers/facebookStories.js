@@ -9,15 +9,17 @@
  * already carries the website URL. Stories expire ~24h.
  *
  * Env: FACEBOOK_PAGE_ID, FACEBOOK_PAGE_ACCESS_TOKEN
- *      FACEBOOK_STORIES_ENABLED=true|false (default true)
+ *      FACEBOOK_STORIES_ENABLED=true|false (default false — off)
  */
 
 const FACEBOOK_API_VERSION = "v21.0";
 const FACEBOOK_GRAPH_BASE_URL = `https://graph.facebook.com/${FACEBOOK_API_VERSION}`;
 
 export function isFacebookStoriesEnabled() {
-  const raw = String(process.env.FACEBOOK_STORIES_ENABLED ?? "true").toLowerCase();
-  return !["0", "false", "no", "off"].includes(raw);
+  // Stories disabled — Graph photo_stories was causing Facebook post errors (code 200).
+  // Set FACEBOOK_STORIES_ENABLED=true only if you intentionally re-enable later.
+  const raw = String(process.env.FACEBOOK_STORIES_ENABLED ?? "false").toLowerCase();
+  return ["1", "true", "yes", "on"].includes(raw);
 }
 
 /**

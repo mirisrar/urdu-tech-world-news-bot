@@ -81,8 +81,9 @@ jobs:
           FACEBOOK_SCHEDULE_GAP_MS: "300000"
           FACEBOOK_MAX_SCHEDULES_PER_RUN: "20"
           FACEBOOK_QUEUE_BACKFILL_LIMIT: "25"
-          # Schedule ALL new news (do not skip by category).
-          FACEBOOK_IMPORTANT_ONLY: "false"
+          # Only important news: Pakistan / Politics / World (or featured=true).
+          FACEBOOK_IMPORTANT_ONLY: "true"
+          FACEBOOK_IMPORTANT_CATEGORIES: "Pakistan,Politics,World"
           FACEBOOK_MAX_AGE_HOURS: "72"
           FACEBOOK_MAX_POSTS_PER_DAY: "288"
           FACEBOOK_MAX_POSTS_PER_RUN: "1"
