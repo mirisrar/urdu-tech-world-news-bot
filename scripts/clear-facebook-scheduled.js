@@ -15,17 +15,29 @@ function log(level, message, meta) {
   console.log(`[${level.toUpperCase()}] ${line}`);
 }
 
+async function fetchJson(url, timeoutMs = 20000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.error) {
+      throw new Error(data?.error?.message || `HTTP ${res.status}`);
+    }
+    return data;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 async function fetchAll(url, { maxPages = 20 } = {}) {
   const ids = [];
   let cursor = url;
   let pages = 0;
   while (cursor && pages < maxPages) {
     pages += 1;
-    const res = await fetch(cursor);
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || data.error) {
-      throw new Error(data?.error?.message || `HTTP ${res.status}`);
-    }
+    log("info", "Fetching schedule page", { page: pages });
+    const data = await fetchJson(cursor);
     for (const row of data.data || []) {
       if (row.id) ids.push(String(row.id));
     }
