@@ -15,10 +15,12 @@ function log(level, message, meta) {
   console.log(`[${level.toUpperCase()}] ${line}`);
 }
 
-async function fetchAll(url) {
+async function fetchAll(url, { maxPages = 20 } = {}) {
   const ids = [];
   let cursor = url;
-  while (cursor) {
+  let pages = 0;
+  while (cursor && pages < maxPages) {
+    pages += 1;
     const res = await fetch(cursor);
     const data = await res.json().catch(() => ({}));
     if (!res.ok || data.error) {
@@ -36,24 +38,16 @@ async function listScheduledPostIds(pageId, token) {
   const ids = new Set();
   const q = `access_token=${encodeURIComponent(token)}&limit=100`;
 
+  // Only Meta Scheduled tab posts (not entire unpublished history).
   try {
     const a = await fetchAll(
-      `${API}/${pageId}/scheduled_posts?fields=id,scheduled_publish_time&${q}`
+      `${API}/${pageId}/scheduled_posts?fields=id,scheduled_publish_time&${q}`,
+      { maxPages: 50 }
     );
     a.forEach((id) => ids.add(id));
     log("info", "scheduled_posts", { count: a.length });
   } catch (err) {
     log("warn", "scheduled_posts failed", { message: err.message });
-  }
-
-  try {
-    const b = await fetchAll(
-      `${API}/${pageId}/promotable_posts?is_published=false&fields=id,is_published,scheduled_publish_time&${q}`
-    );
-    b.forEach((id) => ids.add(id));
-    log("info", "unpublished promotable_posts", { count: b.length });
-  } catch (err) {
-    log("warn", "promotable_posts failed", { message: err.message });
   }
 
   return [...ids];
