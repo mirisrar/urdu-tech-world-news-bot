@@ -204,15 +204,39 @@ export async function enqueueFacebookNews(supabase, opts, log = () => {}) {
   }
 
   if (existing) {
-    // Retry native schedule if we only saved locally before.
-    if (
-      (existing.status === "pending" || existing.status === "failed") &&
-      !existing.fb_post_id
-    ) {
+    if (existing.fb_post_id || existing.status === "scheduled" || existing.status === "posted") {
+      return {
+        queued: false,
+        reason: "already_queued",
+        scheduledAt: existing.scheduled_at
+      };
+    }
+
+    // Retry pending / failed / cancelled local rows that never reached Meta.
+    if (!existing.fb_post_id) {
       try {
+        const scheduledAt = await nextFacebookScheduleAt(supabase);
+        const retryRow = {
+          ...existing,
+          post_text: postText,
+          image_url: opts.imageUrl || existing.image_url || "",
+          scheduled_at: scheduledAt.toISOString(),
+          status: "pending"
+        };
+        await supabase
+          .from("facebook_queue")
+          .update({
+            status: "pending",
+            scheduled_at: retryRow.scheduled_at,
+            post_text: retryRow.post_text,
+            image_url: retryRow.image_url,
+            error: null
+          })
+          .eq("id", existing.id);
+
         const scheduled = await scheduleRowOnFacebook(
           supabase,
-          existing,
+          retryRow,
           opts.updatePublishStatus,
           log
         );
@@ -227,7 +251,7 @@ export async function enqueueFacebookNews(supabase, opts, log = () => {}) {
         return {
           queued: false,
           reason: scheduled.reason || "schedule_skipped",
-          scheduledAt: existing.scheduled_at
+          scheduledAt: retryRow.scheduled_at
         };
       } catch (err) {
         await supabase
@@ -323,8 +347,9 @@ export async function enqueueFacebookNews(supabase, opts, log = () => {}) {
 }
 
 /**
- * Backfill Admin / orphan news into native Facebook schedule.
- * Set FACEBOOK_QUEUE_BACKFILL_LIMIT=0 to disable (only new items from the run).
+ * Backfill news into native Facebook schedule (important filter still applies).
+ * Set FACEBOOK_QUEUE_BACKFILL_LIMIT=0 to disable.
+ * Optional FACEBOOK_QUEUE_BACKFILL_MIN_NEWS_ID — only catch up from that id upward.
  */
 export async function enqueueMissingNewsForFacebook(supabase, opts = {}, log = () => {}) {
   const limit = opts.limit ?? envInt("FACEBOOK_QUEUE_BACKFILL_LIMIT", 10);
@@ -332,14 +357,22 @@ export async function enqueueMissingNewsForFacebook(supabase, opts = {}, log = (
     return 0;
   }
 
-  const { data: newsRows, error } = await supabase
+  const minNewsId = opts.minNewsId ?? envInt("FACEBOOK_QUEUE_BACKFILL_MIN_NEWS_ID", 0);
+
+  let query = supabase
     .from("news")
     .select(
       "id, facebook_post, urdu_summary, urdu_title, hashtags, image_url, image_credit, fb_post_id, category, featured, created_at"
     )
     .is("fb_post_id", null)
-    .order("id", { ascending: false })
-    .limit(Math.max(limit * 8, 80));
+    .order("id", { ascending: true })
+    .limit(Math.max(limit * 10, 100));
+
+  if (minNewsId > 0) {
+    query = query.gte("id", minNewsId);
+  }
+
+  const { data: newsRows, error } = await query;
 
   if (error) {
     log("warn", "facebook_queue backfill: could not load news", {
@@ -353,7 +386,7 @@ export async function enqueueMissingNewsForFacebook(supabase, opts = {}, log = (
   const ids = newsRows.map((r) => r.id);
   const { data: queued, error: qErr } = await supabase
     .from("facebook_queue")
-    .select("news_id")
+    .select("news_id, status, fb_post_id")
     .in("news_id", ids);
 
   if (qErr) {
@@ -363,11 +396,21 @@ export async function enqueueMissingNewsForFacebook(supabase, opts = {}, log = (
     return 0;
   }
 
-  const queuedSet = new Set((queued || []).map((r) => String(r.news_id)));
+  /** Already on Meta (or actively scheduled) — skip. failed/cancelled may retry. */
+  const blockedSet = new Set(
+    (queued || [])
+      .filter(
+        (r) =>
+          r.fb_post_id ||
+          r.status === "scheduled" ||
+          r.status === "posted"
+      )
+      .map((r) => String(r.news_id))
+  );
   let added = 0;
 
   const candidates = newsRows
-    .filter((r) => !queuedSet.has(String(r.id)) && !wasFacebookPosted(r.id))
+    .filter((r) => !blockedSet.has(String(r.id)) && !wasFacebookPosted(r.id))
     .filter((r) =>
       evaluateFacebookEligibility({
         category: r.category,
@@ -375,8 +418,15 @@ export async function enqueueMissingNewsForFacebook(supabase, opts = {}, log = (
         createdAt: r.created_at
       }).ok
     )
-    .sort((a, b) => Number(a.id) - Number(b.id))
     .slice(0, limit);
+
+  if (minNewsId > 0) {
+    log("info", "Facebook backfill window", {
+      minNewsId,
+      limit,
+      candidates: candidates.length
+    });
+  }
 
   for (const row of candidates) {
     const facebookPost =
@@ -431,8 +481,9 @@ export async function processFacebookQueue(supabase, updatePublishStatus, log = 
     .lte("scheduled_at", nowIso)
     .not("fb_post_id", "is", null);
 
-  // Abandon stale pending/failed rows that never reached Meta (no catch-up).
-  const { error: staleErr } = await supabase
+  // Abandon stale pending/failed below the catch-up floor (keep minNewsId+ for retry).
+  const minNewsId = envInt("FACEBOOK_QUEUE_BACKFILL_MIN_NEWS_ID", 0);
+  let staleQuery = supabase
     .from("facebook_queue")
     .update({
       status: "cancelled",
@@ -442,24 +493,36 @@ export async function processFacebookQueue(supabase, updatePublishStatus, log = 
     .is("fb_post_id", null)
     .lt("created_at", retryCutoffIso);
 
+  if (minNewsId > 0) {
+    staleQuery = staleQuery.lt("news_id", minNewsId);
+  }
+
+  const { error: staleErr } = await staleQuery;
+
   if (staleErr) {
     log("warn", "Facebook queue: could not cancel stale backlog", {
       message: staleErr.message
     });
-  } else {
-    log("info", "Facebook queue: stale backlog cancelled (no catch-up)", {
-      olderThanHours: retryMaxAgeHours
-    });
   }
 
-  const { data: due, error } = await supabase
+  let dueQuery = supabase
     .from("facebook_queue")
     .select("id, news_id, post_text, image_url, scheduled_at, status, fb_post_id, created_at")
     .in("status", ["pending", "failed"])
     .is("fb_post_id", null)
-    .gte("created_at", retryCutoffIso)
     .order("scheduled_at", { ascending: true })
     .limit(maxPerRun);
+
+  // Recent rows always; catch-up floor (e.g. 4540+) always eligible for retry.
+  if (minNewsId > 0) {
+    dueQuery = dueQuery.or(
+      `created_at.gte.${retryCutoffIso},news_id.gte.${minNewsId}`
+    );
+  } else {
+    dueQuery = dueQuery.gte("created_at", retryCutoffIso);
+  }
+
+  const { data: due, error } = await dueQuery;
 
   if (error) {
     log("warn", "facebook_queue process: select failed", { message: error.message });
