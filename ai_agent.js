@@ -6,8 +6,45 @@
  * (RSS media tags + og:image / twitter:image).
  */
 
-const GEMINI_MODEL = "gemini-3.5-flash-lite";
-const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+/** Primary first — every analyzeNews call starts here so quota reset auto-recovers. */
+const DEFAULT_GEMINI_MODELS = [
+  "gemini-3.5-flash-lite",
+  "gemini-3.1-flash-lite",
+  "gemini-2.5-flash",
+  "gemini-3-flash"
+];
+
+/**
+ * Ordered Gemini models. Override with GEMINI_MODELS=model1,model2,...
+ * @returns {string[]}
+ */
+export function getGeminiModels() {
+  const raw = String(process.env.GEMINI_MODELS || "").trim();
+  if (!raw) return [...DEFAULT_GEMINI_MODELS];
+  const list = raw
+    .split(/[,|\s]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return list.length > 0 ? list : [...DEFAULT_GEMINI_MODELS];
+}
+
+function geminiGenerateUrl(model) {
+  return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+}
+
+/** @param {unknown} err */
+function isGeminiQuotaOrRateLimitError(err) {
+  const msg = String(err?.message || err || "").toLowerCase();
+  return (
+    msg.includes("429") ||
+    msg.includes("resource_exhausted") ||
+    msg.includes("resource exhausted") ||
+    msg.includes("quota") ||
+    msg.includes("rate limit") ||
+    msg.includes("rate_limit") ||
+    msg.includes("too many requests")
+  );
+}
 
 // Prompt version history:
 //   v2 — structured JSON, headline-only input
@@ -209,10 +246,14 @@ Remember:
 - Do not invent image prompts or image URLs.`;
 }
 
-async function callGemini(item) {
+/**
+ * @param {{ title: string, rawContent?: string, description?: string }} item
+ * @param {string} model
+ */
+async function callGemini(item, model) {
   const prompt = buildUserPrompt(item);
 
-  const response = await fetch(GEMINI_API_URL, {
+  const response = await fetch(geminiGenerateUrl(model), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -239,7 +280,7 @@ async function callGemini(item) {
   if (!response.ok) {
     const errorBody = await response.text().catch(() => "");
     throw new Error(
-      `Gemini API returned ${response.status}: ${response.statusText} ${errorBody}`.trim()
+      `Gemini API (${model}) returned ${response.status}: ${response.statusText} ${errorBody}`.trim()
     );
   }
 
@@ -247,7 +288,7 @@ async function callGemini(item) {
 
   const blockReason = data?.promptFeedback?.blockReason;
   if (blockReason) {
-    throw new Error(`Gemini blocked the request: ${blockReason}`);
+    throw new Error(`Gemini blocked the request (${model}): ${blockReason}`);
   }
 
   const finishReason = data?.candidates?.[0]?.finishReason;
@@ -255,7 +296,7 @@ async function callGemini(item) {
 
   if (!content) {
     throw new Error(
-      `Gemini API response missing content${finishReason ? ` (finishReason=${finishReason})` : ""}`
+      `Gemini API response missing content (${model})${finishReason ? ` (finishReason=${finishReason})` : ""}`
     );
   }
 
@@ -273,33 +314,55 @@ export async function analyzeNews(item, log = () => {}) {
     throw new Error("analyzeNews: item.title is required");
   }
 
+  const models = getGeminiModels();
   let lastError;
 
-  for (let attempt = 1; attempt <= AI_MAX_RETRIES + 1; attempt++) {
-    try {
-      const aiText = await callGemini(item);
-      const result = parseAiResponse(aiText);
+  // Always start at primary (index 0) so quota reset returns to 3.5-flash-lite.
+  for (let modelIndex = 0; modelIndex < models.length; modelIndex++) {
+    const model = models[modelIndex];
 
-      if (isValidAiResult(result)) {
-        return result;
+    for (let attempt = 1; attempt <= AI_MAX_RETRIES + 1; attempt++) {
+      try {
+        const aiText = await callGemini(item, model);
+        const result = parseAiResponse(aiText);
+
+        if (isValidAiResult(result)) {
+          if (modelIndex > 0) {
+            log("info", "Gemini fallback model succeeded", { model, title: item.title });
+          }
+          return result;
+        }
+
+        lastError = new Error(
+          `AI response failed Urdu/full-article validation (titleUrduChars=${countUrduChars(result.urduTitle)}, bodyLen=${result.article?.length || 0})`
+        );
+        log("warn", `AI response validation failed (attempt ${attempt})`, {
+          model,
+          title: item.title,
+          bodyLength: result.article?.length || 0,
+          urduTitleChars: countUrduChars(result.urduTitle),
+          urduBodyChars: countUrduChars(result.article)
+        });
+      } catch (error) {
+        lastError = error;
+        log("warn", `Gemini call failed (attempt ${attempt})`, {
+          model,
+          message: error.message
+        });
+
+        // Quota / rate-limit → try next model immediately (no more retries on this one).
+        if (isGeminiQuotaOrRateLimitError(error) && modelIndex < models.length - 1) {
+          log("warn", "Gemini quota/rate-limit — switching model", {
+            from: model,
+            to: models[modelIndex + 1]
+          });
+          break;
+        }
       }
 
-      lastError = new Error(
-        `AI response failed Urdu/full-article validation (titleUrduChars=${countUrduChars(result.urduTitle)}, bodyLen=${result.article?.length || 0})`
-      );
-      log("warn", `AI response validation failed (attempt ${attempt})`, {
-        title: item.title,
-        bodyLength: result.article?.length || 0,
-        urduTitleChars: countUrduChars(result.urduTitle),
-        urduBodyChars: countUrduChars(result.article)
-      });
-    } catch (error) {
-      lastError = error;
-      log("warn", `Gemini call failed (attempt ${attempt})`, { message: error.message });
-    }
-
-    if (attempt <= AI_MAX_RETRIES) {
-      await sleep(AI_RETRY_DELAY_MS * attempt);
+      if (attempt <= AI_MAX_RETRIES) {
+        await sleep(AI_RETRY_DELAY_MS * attempt);
+      }
     }
   }
 
