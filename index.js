@@ -34,7 +34,9 @@ import {
 import {
   evaluateFacebookEligibility,
   isFacebookImportantFilterEnabled,
-  getFacebookImportantCategories
+  isFacebookSameDayOnlyEnabled,
+  getFacebookImportantCategories,
+  getFacebookTimezone
 } from "./publishers/facebookEligibility.js";
 import {
   ingestTelegramEditorMessages,
@@ -782,6 +784,8 @@ async function run() {
     facebookUseQueue: isFacebookQueueEnabled(),
     facebookImportantOnly: isFacebookImportantFilterEnabled(),
     facebookImportantCategories: getFacebookImportantCategories(),
+    facebookSameDayOnly: isFacebookSameDayOnlyEnabled(),
+    facebookTimezone: getFacebookTimezone(),
     facebookPauseUntil: fbCfg.pauseUntilIso || null,
     facebookBlocked: getFacebookBlockReason(),
     skipIfNoTopicImage: SKIP_IF_NO_TOPIC_IMAGE,

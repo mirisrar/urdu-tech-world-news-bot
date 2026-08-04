@@ -1,15 +1,18 @@
 /**
- * Facebook eligibility — only "important" news go to Feed + Stories.
+ * Facebook eligibility — only "important" news go to Feed / Schedule.
  *
  * Important if ANY:
  *   - category in allowlist (default: Pakistan, Politics, World)
  *   - featured === true
  *
- * Also skip if article is older than FACEBOOK_MAX_AGE_HOURS (default 48).
+ * Same-day only (default ON): skip yesterday when the date rolls over.
+ * Also skip if older than FACEBOOK_MAX_AGE_HOURS when same-day is off.
  *
  * Env:
  *   FACEBOOK_IMPORTANT_ONLY=true|false   (default true)
  *   FACEBOOK_IMPORTANT_CATEGORIES=Pakistan,Politics,World
+ *   FACEBOOK_SAME_DAY_ONLY=true|false    (default true)
+ *   FACEBOOK_TIMEZONE=Asia/Karachi
  *   FACEBOOK_MAX_AGE_HOURS=48
  */
 
@@ -31,6 +34,16 @@ export function isFacebookImportantFilterEnabled() {
   return envFlag("FACEBOOK_IMPORTANT_ONLY", true);
 }
 
+/** @returns {boolean} */
+export function isFacebookSameDayOnlyEnabled() {
+  return envFlag("FACEBOOK_SAME_DAY_ONLY", true);
+}
+
+/** @returns {string} */
+export function getFacebookTimezone() {
+  return String(process.env.FACEBOOK_TIMEZONE || "Asia/Karachi").trim() || "Asia/Karachi";
+}
+
 /** @returns {string[]} lowercase category tokens */
 export function getFacebookImportantCategories() {
   const raw = String(
@@ -44,6 +57,50 @@ export function getFacebookImportantCategories() {
 
 export function facebookMaxAgeMs() {
   return envInt("FACEBOOK_MAX_AGE_HOURS", 48) * 60 * 60 * 1000;
+}
+
+/**
+ * Calendar date YYYY-MM-DD in the Facebook timezone.
+ * @param {number|Date} [when]
+ * @returns {string}
+ */
+export function facebookCalendarDate(when = Date.now()) {
+  const ms = when instanceof Date ? when.getTime() : Number(when);
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: getFacebookTimezone(),
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(new Date(ms));
+}
+
+/**
+ * Start of "today" in FACEBOOK_TIMEZONE as a Date (UTC instant).
+ * Asia/Karachi is fixed UTC+5 (no DST).
+ * @param {number|Date} [when]
+ * @returns {Date}
+ */
+export function startOfFacebookDay(when = Date.now()) {
+  const dateStr = facebookCalendarDate(when);
+  // Asia/Karachi is fixed UTC+5 (no DST) — midnight local → ISO instant.
+  return new Date(`${dateStr}T00:00:00+05:00`);
+}
+
+/**
+ * @param {string|Date|number|null|undefined} createdAt
+ * @param {number|Date} [now]
+ * @returns {boolean}
+ */
+export function isFacebookCreatedToday(createdAt, now = Date.now()) {
+  if (createdAt === null || createdAt === undefined || createdAt === "") {
+    return true;
+  }
+  const ms =
+    createdAt instanceof Date
+      ? createdAt.getTime()
+      : Date.parse(String(createdAt));
+  if (!Number.isFinite(ms)) return true;
+  return facebookCalendarDate(ms) === facebookCalendarDate(now);
 }
 
 /**
@@ -67,18 +124,24 @@ export function categoryIsImportant(category, allowlist = getFacebookImportantCa
  * @returns {{ ok: true } | { ok: false, reason: string }}
  */
 export function evaluateFacebookEligibility(opts = {}) {
-  if (!isFacebookImportantFilterEnabled()) {
-    return { ok: true };
-  }
-
   const featured = opts.featured === true || opts.featured === "true" || opts.featured === 1;
-  const categoryOk = categoryIsImportant(opts.category);
 
-  if (!featured && !categoryOk) {
-    return { ok: false, reason: "not_important_category" };
+  if (isFacebookImportantFilterEnabled()) {
+    const categoryOk = categoryIsImportant(opts.category);
+    if (!featured && !categoryOk) {
+      return { ok: false, reason: "not_important_category" };
+    }
   }
 
-  if (opts.createdAt !== null && opts.createdAt !== undefined && opts.createdAt !== "") {
+  if (isFacebookSameDayOnlyEnabled()) {
+    if (!isFacebookCreatedToday(opts.createdAt)) {
+      return { ok: false, reason: "not_today" };
+    }
+  } else if (
+    opts.createdAt !== null &&
+    opts.createdAt !== undefined &&
+    opts.createdAt !== ""
+  ) {
     const ms =
       opts.createdAt instanceof Date
         ? opts.createdAt.getTime()

@@ -18,7 +18,11 @@ import {
   buildWebsiteArticleUrl,
   publishToFacebook
 } from "./publishers/facebook.js";
-import { evaluateFacebookEligibility } from "./publishers/facebookEligibility.js";
+import {
+  evaluateFacebookEligibility,
+  isFacebookSameDayOnlyEnabled,
+  startOfFacebookDay
+} from "./publishers/facebookEligibility.js";
 import { markFacebookPosted, wasFacebookPosted } from "./publishState.js";
 
 /** Meta requires scheduled_publish_time at least ~10 minutes ahead. */
@@ -372,6 +376,11 @@ export async function enqueueMissingNewsForFacebook(supabase, opts = {}, log = (
     query = query.gte("id", minNewsId);
   }
 
+  // Never backfill yesterday after the date rolls over.
+  if (isFacebookSameDayOnlyEnabled()) {
+    query = query.gte("created_at", startOfFacebookDay().toISOString());
+  }
+
   const { data: newsRows, error } = await query;
 
   if (error) {
@@ -481,20 +490,27 @@ export async function processFacebookQueue(supabase, updatePublishStatus, log = 
     .lte("scheduled_at", nowIso)
     .not("fb_post_id", "is", null);
 
-  // Abandon stale pending/failed below the catch-up floor (keep minNewsId+ for retry).
+  // Abandon stale / previous-day pending (no catch-up after midnight).
   const minNewsId = envInt("FACEBOOK_QUEUE_BACKFILL_MIN_NEWS_ID", 0);
+  const sameDayOnly = isFacebookSameDayOnlyEnabled();
+  const dayStartIso = startOfFacebookDay().toISOString();
+
   let staleQuery = supabase
     .from("facebook_queue")
     .update({
       status: "cancelled",
-      error: "stale_backlog_skipped"
+      error: sameDayOnly ? "previous_day_skipped" : "stale_backlog_skipped"
     })
     .in("status", ["pending", "failed"])
-    .is("fb_post_id", null)
-    .lt("created_at", retryCutoffIso);
+    .is("fb_post_id", null);
 
-  if (minNewsId > 0) {
-    staleQuery = staleQuery.lt("news_id", minNewsId);
+  if (sameDayOnly) {
+    staleQuery = staleQuery.lt("created_at", dayStartIso);
+  } else {
+    staleQuery = staleQuery.lt("created_at", retryCutoffIso);
+    if (minNewsId > 0) {
+      staleQuery = staleQuery.lt("news_id", minNewsId);
+    }
   }
 
   const { error: staleErr } = await staleQuery;
@@ -513,8 +529,9 @@ export async function processFacebookQueue(supabase, updatePublishStatus, log = 
     .order("scheduled_at", { ascending: true })
     .limit(maxPerRun);
 
-  // When catch-up floor is set (e.g. 4540), only process that range — never older ids.
-  if (minNewsId > 0) {
+  if (sameDayOnly) {
+    dueQuery = dueQuery.gte("created_at", dayStartIso);
+  } else if (minNewsId > 0) {
     dueQuery = dueQuery.gte("news_id", minNewsId);
   } else {
     dueQuery = dueQuery.gte("created_at", retryCutoffIso);

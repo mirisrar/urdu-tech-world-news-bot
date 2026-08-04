@@ -75,17 +75,20 @@ jobs:
           # Secret optional — code defaults to https://www.nexoranewsurdu.com
           WEBSITE_BASE_URL: ${{ secrets.WEBSITE_BASE_URL }}
           WEBSITE_ARTICLE_PATH: "/article.html?id={id}"
-          # Meta Scheduled: important news only. Catch up from news id 4540+.
+          # Meta Scheduled: today's important news only (Asia/Karachi calendar day).
+          # After midnight, yesterday is never fetched into schedule.
           FACEBOOK_USE_QUEUE: "true"
           FACEBOOK_SCHEDULE_GAP_MS: "300000"
           FACEBOOK_MAX_SCHEDULES_PER_RUN: "20"
           FACEBOOK_QUEUE_BACKFILL_LIMIT: "20"
-          FACEBOOK_QUEUE_BACKFILL_MIN_NEWS_ID: "4540"
-          FACEBOOK_QUEUE_RETRY_MAX_AGE_HOURS: "48"
+          FACEBOOK_QUEUE_BACKFILL_MIN_NEWS_ID: "0"
+          FACEBOOK_QUEUE_RETRY_MAX_AGE_HOURS: "24"
+          FACEBOOK_SAME_DAY_ONLY: "true"
+          FACEBOOK_TIMEZONE: "Asia/Karachi"
           # Only important news: Pakistan / Politics / World (or featured=true).
           FACEBOOK_IMPORTANT_ONLY: "true"
           FACEBOOK_IMPORTANT_CATEGORIES: "Pakistan,Politics,World"
-          FACEBOOK_MAX_AGE_HOURS: "72"
+          FACEBOOK_MAX_AGE_HOURS: "24"
           FACEBOOK_MAX_POSTS_PER_DAY: "288"
           FACEBOOK_MAX_POSTS_PER_RUN: "1"
           FACEBOOK_MIN_GAP_MS: "300000"
