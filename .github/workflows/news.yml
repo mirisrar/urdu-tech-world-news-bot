@@ -74,10 +74,9 @@ jobs:
           # Secret optional — code defaults to https://www.nexoranewsurdu.com
           WEBSITE_BASE_URL: ${{ secrets.WEBSITE_BASE_URL }}
           WEBSITE_ARTICLE_PATH: "/article.html?id={id}"
-          # Facebook native Scheduled (Meta Scheduled tab):
-          # published=false + scheduled_publish_time; slots every 5 min
-          # (first post always >= +10 min — Meta minimum).
-          FACEBOOK_USE_QUEUE: "true"
+          # Immediate live Feed posts (no Meta Scheduled / published=false).
+          # Native schedule was failing with (#200) unpublished-as-page.
+          FACEBOOK_USE_QUEUE: "false"
           FACEBOOK_SCHEDULE_GAP_MS: "300000"
           FACEBOOK_MAX_SCHEDULES_PER_RUN: "20"
           FACEBOOK_QUEUE_BACKFILL_LIMIT: "25"
@@ -86,7 +85,7 @@ jobs:
           FACEBOOK_IMPORTANT_CATEGORIES: "Pakistan,Politics,World"
           FACEBOOK_MAX_AGE_HOURS: "72"
           FACEBOOK_MAX_POSTS_PER_DAY: "288"
-          FACEBOOK_MAX_POSTS_PER_RUN: "1"
+          FACEBOOK_MAX_POSTS_PER_RUN: "3"
           FACEBOOK_MIN_GAP_MS: "300000"
           FACEBOOK_POST_INTERVAL_MS: "0"
           # Phase 9 — title dedupe + DB publish retry (no Redis).
