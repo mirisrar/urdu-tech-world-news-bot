@@ -7,13 +7,14 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "run = normal bot; repair_image = fix one article image"
+        description: "run | repair_image | clear_fb_schedule"
         required: false
         default: "run"
         type: choice
         options:
           - run
           - repair_image
+          - clear_fb_schedule
       news_id:
         description: "For repair_image — news.id (e.g. 2836)"
         required: false
@@ -31,7 +32,7 @@ concurrency:
 
 jobs:
   run:
-    if: ${{ github.event_name == 'schedule' || github.event.inputs.mode != 'repair_image' }}
+    if: ${{ github.event_name == 'schedule' || (github.event.inputs.mode != 'repair_image' && github.event.inputs.mode != 'clear_fb_schedule') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -148,3 +149,24 @@ jobs:
           UNSPLASH_ACCESS_KEY: ${{ secrets.UNSPLASH_ACCESS_KEY }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           STOCK_IMAGE_PROVIDER: "auto"
+
+  clear_fb_schedule:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'clear_fb_schedule' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm install
+
+      - name: Delete all Facebook scheduled posts
+        run: node scripts/clear-facebook-scheduled.js
+        env:
+          FACEBOOK_PAGE_ID: ${{ secrets.FACEBOOK_PAGE_ID }}
+          FACEBOOK_PAGE_ACCESS_TOKEN: ${{ secrets.FACEBOOK_PAGE_ACCESS_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
