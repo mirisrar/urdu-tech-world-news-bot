@@ -74,18 +74,19 @@ jobs:
           # Secret optional — code defaults to https://www.nexoranewsurdu.com
           WEBSITE_BASE_URL: ${{ secrets.WEBSITE_BASE_URL }}
           WEBSITE_ARTICLE_PATH: "/article.html?id={id}"
-          # Immediate live Feed posts (no Meta Scheduled / published=false).
-          # Native schedule was failing with (#200) unpublished-as-page.
-          FACEBOOK_USE_QUEUE: "false"
+          # Meta Scheduled: important news only. No backlog catch-up.
+          FACEBOOK_USE_QUEUE: "true"
           FACEBOOK_SCHEDULE_GAP_MS: "300000"
           FACEBOOK_MAX_SCHEDULES_PER_RUN: "20"
-          FACEBOOK_QUEUE_BACKFILL_LIMIT: "25"
+          # 0 = do not enqueue old news missing fb_post_id — only new from this run.
+          FACEBOOK_QUEUE_BACKFILL_LIMIT: "0"
+          FACEBOOK_QUEUE_RETRY_MAX_AGE_HOURS: "6"
           # Only important news: Pakistan / Politics / World (or featured=true).
           FACEBOOK_IMPORTANT_ONLY: "true"
           FACEBOOK_IMPORTANT_CATEGORIES: "Pakistan,Politics,World"
           FACEBOOK_MAX_AGE_HOURS: "72"
           FACEBOOK_MAX_POSTS_PER_DAY: "288"
-          FACEBOOK_MAX_POSTS_PER_RUN: "3"
+          FACEBOOK_MAX_POSTS_PER_RUN: "1"
           FACEBOOK_MIN_GAP_MS: "300000"
           FACEBOOK_POST_INTERVAL_MS: "0"
           # Phase 9 — title dedupe + DB publish retry (no Redis).

@@ -46,7 +46,8 @@ export function isFacebookQueueEnabled() {
 }
 
 /**
- * Next schedule time: max(now+10min, last_scheduled + gap).
+ * Next schedule time: max(now+10min, last *successful Meta* schedule + gap).
+ * Ignores local-only pending rows so a failed backlog cannot push slots weeks out.
  * @param {import("@supabase/supabase-js").SupabaseClient} supabase
  * @returns {Promise<Date>}
  */
@@ -57,6 +58,8 @@ export async function nextFacebookScheduleAt(supabase) {
   const { data, error } = await supabase
     .from("facebook_queue")
     .select("scheduled_at")
+    .not("fb_post_id", "is", null)
+    .in("status", ["scheduled", "posted"])
     .order("scheduled_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -321,9 +324,13 @@ export async function enqueueFacebookNews(supabase, opts, log = () => {}) {
 
 /**
  * Backfill Admin / orphan news into native Facebook schedule.
+ * Set FACEBOOK_QUEUE_BACKFILL_LIMIT=0 to disable (only new items from the run).
  */
 export async function enqueueMissingNewsForFacebook(supabase, opts = {}, log = () => {}) {
   const limit = opts.limit ?? envInt("FACEBOOK_QUEUE_BACKFILL_LIMIT", 10);
+  if (limit <= 0) {
+    return 0;
+  }
 
   const { data: newsRows, error } = await supabase
     .from("news")
@@ -410,6 +417,11 @@ export async function enqueueMissingNewsForFacebook(supabase, opts = {}, log = (
 export async function processFacebookQueue(supabase, updatePublishStatus, log = () => {}) {
   const maxPerRun = envInt("FACEBOOK_MAX_SCHEDULES_PER_RUN", 10);
   const nowIso = new Date().toISOString();
+  // Do not catch up old backlog — only retry recent local queue rows.
+  const retryMaxAgeHours = envInt("FACEBOOK_QUEUE_RETRY_MAX_AGE_HOURS", 6);
+  const retryCutoffIso = new Date(
+    Date.now() - retryMaxAgeHours * 60 * 60 * 1000
+  ).toISOString();
 
   // Mark schedules whose time has passed as posted (FB already published them).
   await supabase
@@ -419,11 +431,33 @@ export async function processFacebookQueue(supabase, updatePublishStatus, log = 
     .lte("scheduled_at", nowIso)
     .not("fb_post_id", "is", null);
 
-  const { data: due, error } = await supabase
+  // Abandon stale pending/failed rows that never reached Meta (no catch-up).
+  const { error: staleErr } = await supabase
     .from("facebook_queue")
-    .select("id, news_id, post_text, image_url, scheduled_at, status, fb_post_id")
+    .update({
+      status: "cancelled",
+      error: "stale_backlog_skipped"
+    })
     .in("status", ["pending", "failed"])
     .is("fb_post_id", null)
+    .lt("created_at", retryCutoffIso);
+
+  if (staleErr) {
+    log("warn", "Facebook queue: could not cancel stale backlog", {
+      message: staleErr.message
+    });
+  } else {
+    log("info", "Facebook queue: stale backlog cancelled (no catch-up)", {
+      olderThanHours: retryMaxAgeHours
+    });
+  }
+
+  const { data: due, error } = await supabase
+    .from("facebook_queue")
+    .select("id, news_id, post_text, image_url, scheduled_at, status, fb_post_id, created_at")
+    .in("status", ["pending", "failed"])
+    .is("fb_post_id", null)
+    .gte("created_at", retryCutoffIso)
     .order("scheduled_at", { ascending: true })
     .limit(maxPerRun);
 
