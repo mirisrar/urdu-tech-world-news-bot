@@ -79,6 +79,8 @@ jobs:
           # After midnight, yesterday is never fetched into schedule.
           FACEBOOK_USE_QUEUE: "true"
           FACEBOOK_SCHEDULE_GAP_MS: "300000"
+          # Do not stack new posts days ahead behind old backlog (max 12h / today).
+          FACEBOOK_SCHEDULE_MAX_AHEAD_HOURS: "12"
           FACEBOOK_MAX_SCHEDULES_PER_RUN: "20"
           FACEBOOK_QUEUE_BACKFILL_LIMIT: "20"
           FACEBOOK_QUEUE_BACKFILL_MIN_NEWS_ID: "0"

@@ -50,8 +50,9 @@ export function isFacebookQueueEnabled() {
 }
 
 /**
- * Next schedule time: max(now+10min, last *successful Meta* schedule + gap).
- * Ignores local-only pending rows so a failed backlog cannot push slots weeks out.
+ * Next schedule time: max(now+10min, last near-term Meta schedule + gap).
+ * Caps how far ahead we stack (default end of today / 12h) so a huge backlog
+ * cannot push new posts to days later (e.g. Aug 6 while today is Aug 4).
  * @param {import("@supabase/supabase-js").SupabaseClient} supabase
  * @returns {Promise<Date>}
  */
@@ -59,25 +60,43 @@ export async function nextFacebookScheduleAt(supabase) {
   const gap = facebookScheduleGapMs();
   const earliest = Date.now() + FACEBOOK_MIN_SCHEDULE_AHEAD_MS;
 
+  const maxAheadHours = envInt("FACEBOOK_SCHEDULE_MAX_AHEAD_HOURS", 12);
+  let latestAllowed = Date.now() + maxAheadHours * 60 * 60 * 1000;
+
+  if (isFacebookSameDayOnlyEnabled()) {
+    const endOfDay =
+      startOfFacebookDay().getTime() + 24 * 60 * 60 * 1000 - 60 * 1000;
+    latestAllowed = Math.min(latestAllowed, endOfDay);
+  }
+
+  // Only chain off slots still inside the allowed window (ignore far-future backlog).
   const { data, error } = await supabase
     .from("facebook_queue")
     .select("scheduled_at")
     .not("fb_post_id", "is", null)
     .in("status", ["scheduled", "posted"])
+    .lte("scheduled_at", new Date(latestAllowed).toISOString())
+    .gte("scheduled_at", new Date(earliest - gap).toISOString())
     .order("scheduled_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 
-  if (error) {
+  if (error || !data?.scheduled_at) {
     return new Date(earliest);
   }
 
-  const lastMs = data?.scheduled_at ? Date.parse(data.scheduled_at) : NaN;
+  const lastMs = Date.parse(data.scheduled_at);
   if (!Number.isFinite(lastMs)) {
     return new Date(earliest);
   }
 
-  return new Date(Math.max(earliest, lastMs + gap));
+  const nextMs = Math.max(earliest, lastMs + gap);
+  if (nextMs > latestAllowed) {
+    // Window full — still place at earliest (Meta can hold parallel near-term slots).
+    return new Date(earliest);
+  }
+
+  return new Date(nextMs);
 }
 
 /**
