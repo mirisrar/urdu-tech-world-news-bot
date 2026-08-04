@@ -513,11 +513,9 @@ export async function processFacebookQueue(supabase, updatePublishStatus, log = 
     .order("scheduled_at", { ascending: true })
     .limit(maxPerRun);
 
-  // Recent rows always; catch-up floor (e.g. 4540+) always eligible for retry.
+  // When catch-up floor is set (e.g. 4540), only process that range — never older ids.
   if (minNewsId > 0) {
-    dueQuery = dueQuery.or(
-      `created_at.gte.${retryCutoffIso},news_id.gte.${minNewsId}`
-    );
+    dueQuery = dueQuery.gte("news_id", minNewsId);
   } else {
     dueQuery = dueQuery.gte("created_at", retryCutoffIso);
   }
