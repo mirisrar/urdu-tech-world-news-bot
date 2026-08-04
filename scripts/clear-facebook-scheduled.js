@@ -1,6 +1,5 @@
 /**
- * Delete all unpublished / scheduled posts on the Facebook Page.
- * Cancels local facebook_queue rows (pending / failed / scheduled).
+ * Delete all Page scheduled posts + cancel local facebook_queue open rows.
  *
  * Env: FACEBOOK_PAGE_ID, FACEBOOK_PAGE_ACCESS_TOKEN
  *      SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (optional)
@@ -9,13 +8,15 @@
 import { createClient } from "@supabase/supabase-js";
 
 const API = "https://graph.facebook.com/v21.0";
+const DELETE_CONCURRENCY = 5;
+const MAX_ROUNDS = 30;
 
 function log(level, message, meta) {
   const line = meta ? `${message} ${JSON.stringify(meta)}` : message;
   console.log(`[${level.toUpperCase()}] ${line}`);
 }
 
-async function fetchJson(url, timeoutMs = 20000) {
+async function fetchJson(url, timeoutMs = 25000) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
@@ -30,11 +31,13 @@ async function fetchJson(url, timeoutMs = 20000) {
   }
 }
 
-async function fetchAll(url, { maxPages = 20 } = {}) {
+async function listScheduledPostIds(pageId, token) {
   const ids = [];
-  let cursor = url;
+  const q = `access_token=${encodeURIComponent(token)}&limit=100&fields=id,scheduled_publish_time`;
+  let cursor = `${API}/${pageId}/scheduled_posts?${q}`;
   let pages = 0;
-  while (cursor && pages < maxPages) {
+
+  while (cursor && pages < 40) {
     pages += 1;
     log("info", "Fetching schedule page", { page: pages });
     const data = await fetchJson(cursor);
@@ -43,35 +46,50 @@ async function fetchAll(url, { maxPages = 20 } = {}) {
     }
     cursor = data.paging?.next || null;
   }
+
   return ids;
-}
-
-async function listScheduledPostIds(pageId, token) {
-  const ids = new Set();
-  const q = `access_token=${encodeURIComponent(token)}&limit=100`;
-
-  // Only Meta Scheduled tab posts (not entire unpublished history).
-  try {
-    const a = await fetchAll(
-      `${API}/${pageId}/scheduled_posts?fields=id,scheduled_publish_time&${q}`,
-      { maxPages: 50 }
-    );
-    a.forEach((id) => ids.add(id));
-    log("info", "scheduled_posts", { count: a.length });
-  } catch (err) {
-    log("warn", "scheduled_posts failed", { message: err.message });
-  }
-
-  return [...ids];
 }
 
 async function deletePost(id, token) {
   const url = `${API}/${id}?access_token=${encodeURIComponent(token)}`;
-  const res = await fetch(url, { method: "DELETE" });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || data.error) {
-    throw new Error(data?.error?.message || `HTTP ${res.status}`);
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 20000);
+  try {
+    const res = await fetch(url, { method: "DELETE", signal: ctrl.signal });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.error) {
+      throw new Error(data?.error?.message || `HTTP ${res.status}`);
+    }
+  } finally {
+    clearTimeout(t);
   }
+}
+
+async function deleteAll(ids, token) {
+  let deleted = 0;
+  let failed = 0;
+
+  for (let i = 0; i < ids.length; i += DELETE_CONCURRENCY) {
+    const batch = ids.slice(i, i + DELETE_CONCURRENCY);
+    const results = await Promise.allSettled(
+      batch.map((id) => deletePost(id, token))
+    );
+    for (let j = 0; j < results.length; j++) {
+      const id = batch[j];
+      if (results[j].status === "fulfilled") {
+        deleted += 1;
+        log("info", "Deleted", { id, n: deleted });
+      } else {
+        failed += 1;
+        log("warn", "Delete failed", {
+          id,
+          message: results[j].reason?.message || String(results[j].reason)
+        });
+      }
+    }
+  }
+
+  return { deleted, failed };
 }
 
 async function clearLocalQueue() {
@@ -96,7 +114,9 @@ async function clearLocalQueue() {
     return { updated: 0, error: listErr.message };
   }
 
-  const newsIds = [...new Set((openRows || []).map((r) => r.news_id).filter(Boolean))];
+  const newsIds = [
+    ...new Set((openRows || []).map((r) => r.news_id).filter(Boolean))
+  ];
 
   const { data, error } = await supabase
     .from("facebook_queue")
@@ -113,7 +133,6 @@ async function clearLocalQueue() {
     return { updated: 0, error: error.message };
   }
 
-  // Allow re-schedule of wiped items (important catch-up / new runs).
   if (newsIds.length > 0) {
     const { error: newsErr } = await supabase
       .from("news")
@@ -122,11 +141,15 @@ async function clearLocalQueue() {
     if (newsErr) {
       log("warn", "news.fb_post_id clear failed", { message: newsErr.message });
     } else {
-      log("info", "news.fb_post_id cleared for re-schedule", { count: newsIds.length });
+      log("info", "news.fb_post_id cleared for re-schedule", {
+        count: newsIds.length
+      });
     }
   }
 
-  log("info", "local facebook_queue cancelled", { updated: (data || []).length });
+  log("info", "local facebook_queue cancelled", {
+    updated: (data || []).length
+  });
   return { updated: (data || []).length, newsCleared: newsIds.length };
 }
 
@@ -139,27 +162,33 @@ async function main() {
   }
 
   log("info", "Clearing Facebook scheduled posts…", { pageId });
-  const ids = await listScheduledPostIds(pageId, token);
-  log("info", "Found posts to delete", { count: ids.length });
 
-  let deleted = 0;
-  let failed = 0;
+  let totalDeleted = 0;
+  let totalFailed = 0;
 
-  for (const id of ids) {
-    try {
-      await deletePost(id, token);
-      deleted += 1;
-      log("info", "Deleted", { id });
-    } catch (err) {
-      failed += 1;
-      log("warn", "Delete failed", { id, message: err.message });
+  for (let round = 1; round <= MAX_ROUNDS; round++) {
+    const ids = await listScheduledPostIds(pageId, token);
+    log("info", "Found posts to delete", { round, count: ids.length });
+    if (ids.length === 0) break;
+
+    const { deleted, failed } = await deleteAll(ids, token);
+    totalDeleted += deleted;
+    totalFailed += failed;
+
+    if (deleted === 0) {
+      log("warn", "No deletes succeeded this round — stopping", { round });
+      break;
     }
   }
 
   const local = await clearLocalQueue();
-  log("info", "Done", { deleted, failed, localCancelled: local.updated });
+  log("info", "Done", {
+    deleted: totalDeleted,
+    failed: totalFailed,
+    localCancelled: local.updated
+  });
 
-  if (ids.length > 0 && deleted === 0) {
+  if (totalDeleted === 0 && totalFailed > 0) {
     process.exitCode = 1;
   }
 }
