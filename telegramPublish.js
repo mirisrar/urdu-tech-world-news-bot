@@ -167,12 +167,15 @@ export async function processTelegramInbox(supabase, log = () => {}) {
         log
       );
 
-      const { title, body } = splitEditorText(row.text_body || row.caption || "");
+      // Multi-line editor text: line 1 = title, rest = full article source for Gemini.
+      const rawEditor = String(row.text_body || row.caption || "").trim();
+      const { title, body } = splitEditorText(rawEditor);
+      const sourceForAi = body || rawEditor || title;
       const aiResult = await analyzeNews(
         {
           title,
-          rawContent: body || title,
-          description: body || title
+          rawContent: sourceForAi,
+          description: sourceForAi
         },
         log
       );

@@ -1,12 +1,10 @@
 /**
  * Phase 1 — Telegram editor ingest via GitHub Actions polling.
  *
- * Each news.yml run:
- *   1. deleteWebhook (so getUpdates works)
- *   2. getUpdates from saved offset
- *   3. Allowlist TELEGRAM_EDITOR_IDS
- *   4. Save photo + caption/text into telegram_inbox (pending)
- *   5. Reply acknowledge (processing comes in Phase 2+)
+ * Multi-line article flow:
+ *   1. Photo (+ optional short title caption) → draft
+ *   2. One or more text messages → append to draft, then pending
+ *   3. Photo + long multi-line caption → pending immediately (one message)
  *
  * Env:
  *   TELEGRAM_BOT_TOKEN          (required)
@@ -21,6 +19,8 @@ import {
 } from "./telegramApi.js";
 
 const OFFSET_KEY = "update_offset";
+/** Caption/body long enough to publish without a follow-up text message. */
+const SUBSTANTIAL_BODY_CHARS = 120;
 
 function envFlag(name, defaultTrue = true) {
   const raw = process.env[name];
@@ -57,18 +57,47 @@ export function extractPhotoFileId(message) {
   return String(best?.file_id || "");
 }
 
+/**
+ * True when caption alone is enough for a full article package.
+ * @param {string} text
+ */
+export function isSubstantialEditorBody(text) {
+  const t = String(text || "").trim();
+  if (!t) return false;
+  const lines = t.split(/\n/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length >= 2 && t.length >= 80) return true;
+  return t.length >= SUBSTANTIAL_BODY_CHARS;
+}
+
+/**
+ * Merge title/caption + follow-up article lines.
+ * @param {string} existing
+ * @param {string} incoming
+ */
+export function mergeEditorBodies(existing, incoming) {
+  const a = String(existing || "").trim();
+  const b = String(incoming || "").trim();
+  if (!a) return b;
+  if (!b) return a;
+  if (a.includes(b)) return a;
+  return `${a}\n\n${b}`;
+}
+
 function helpText() {
   return [
     "Nexora News — Editor bot",
     "",
-    "Send ONE message:",
-    "• Photo + caption = title (or full article text)",
+    "Multi-line article (recommended):",
+    "1) Send PHOTO (caption = title, optional)",
+    "2) Send TEXT message = full article (multi-line OK)",
+    "   You can send more text messages — they append.",
     "",
-    "Bot will (next run, ~5 min):",
-    "• Save to website",
-    "• Post Facebook Feed (immediate)",
+    "OR one message:",
+    "• Photo + long multi-line caption (Telegram max ~1024 chars)",
     "",
-    "Only allowlisted editors can post."
+    "Commands: /done  /cancel  /help",
+    "",
+    "Bot (next run ~5 min): website + Facebook Feed"
   ].join("\n");
 }
 
@@ -106,6 +135,28 @@ async function saveOffset(supabase, offset) {
   if (error) {
     throw new Error(`telegram_bot_state write failed: ${error.message}`);
   }
+}
+
+/**
+ * Latest open draft/pending row with a photo for this editor.
+ * @param {import("@supabase/supabase-js").SupabaseClient} supabase
+ * @param {number|string} userId
+ */
+async function findOpenEditorDraft(supabase, userId) {
+  const { data, error } = await supabase
+    .from("telegram_inbox")
+    .select("id, text_body, caption, status, photo_file_id, created_at")
+    .eq("user_id", userId)
+    .in("status", ["draft", "pending"])
+    .not("photo_file_id", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`telegram_inbox draft lookup failed: ${error.message}`);
+  }
+  return data || null;
 }
 
 /**
@@ -177,7 +228,6 @@ export async function ingestTelegramEditorMessages(supabase, log = () => {}) {
     const caption = String(message.caption || "").trim();
     const photoFileId = extractPhotoFileId(message);
 
-    // /start or /help
     if (/^\/(start|help)\b/i.test(text)) {
       try {
         await telegramSendMessage(chatId, helpText(), messageId);
@@ -202,11 +252,124 @@ export async function ingestTelegramEditorMessages(supabase, log = () => {}) {
       continue;
     }
 
+    // /cancel — drop open draft
+    if (/^\/cancel\b/i.test(text)) {
+      try {
+        const draft = await findOpenEditorDraft(supabase, userId);
+        if (draft) {
+          await supabase
+            .from("telegram_inbox")
+            .update({
+              status: "ignored",
+              error: "cancelled_by_editor",
+              processed_at: new Date().toISOString()
+            })
+            .eq("id", draft.id);
+          await telegramSendMessage(chatId, "🗑️ Draft cancelled.", messageId);
+        } else {
+          await telegramSendMessage(chatId, "No open draft to cancel.", messageId);
+        }
+      } catch (err) {
+        failed += 1;
+        log("warn", "Telegram /cancel failed", { message: err.message });
+      }
+      ignored += 1;
+      continue;
+    }
+
+    // /done — mark draft ready for publish
+    if (/^\/done\b/i.test(text)) {
+      try {
+        const draft = await findOpenEditorDraft(supabase, userId);
+        if (!draft) {
+          await telegramSendMessage(chatId, "No open draft. Send photo + article text.", messageId);
+        } else if (!String(draft.text_body || draft.caption || "").trim()) {
+          await telegramSendMessage(
+            chatId,
+            "✏️ Draft has no article text yet. Send the full multi-line article.",
+            messageId
+          );
+        } else {
+          await supabase
+            .from("telegram_inbox")
+            .update({ status: "pending", error: null })
+            .eq("id", draft.id);
+          await telegramSendMessage(
+            chatId,
+            "✅ Marked ready — publishing on next bot run (~5 min).",
+            messageId
+          );
+          accepted += 1;
+        }
+      } catch (err) {
+        failed += 1;
+        log("warn", "Telegram /done failed", { message: err.message });
+      }
+      continue;
+    }
+
+    // Follow-up TEXT (multi-line article) → append to open photo draft
+    if (!photoFileId && text) {
+      try {
+        const draft = await findOpenEditorDraft(supabase, userId);
+        if (!draft) {
+          await telegramSendMessage(
+            chatId,
+            "📷 First send a PHOTO (caption = title), then send the full article as text.",
+            messageId
+          );
+          ignored += 1;
+          continue;
+        }
+
+        const merged = mergeEditorBodies(draft.text_body || draft.caption || "", text);
+        const { error } = await supabase
+          .from("telegram_inbox")
+          .update({
+            text_body: merged,
+            status: "pending",
+            error: null
+          })
+          .eq("id", draft.id);
+
+        if (error) {
+          failed += 1;
+          log("warn", "telegram_inbox text append failed", {
+            draftId: draft.id,
+            message: error.message
+          });
+          await telegramSendMessage(
+            chatId,
+            `⚠️ Could not save text.\n${error.message.slice(0, 120)}`,
+            messageId
+          );
+          continue;
+        }
+
+        accepted += 1;
+        await telegramSendMessage(
+          chatId,
+          [
+            "✅ Article text saved (multi-line OK).",
+            `Chars: ${merged.length}`,
+            "More text? Send another message — it will append.",
+            "Or wait ~5 min for website + Facebook publish.",
+            "/cancel to drop this draft."
+          ].join("\n"),
+          messageId
+        );
+      } catch (err) {
+        failed += 1;
+        log("warn", "Telegram text follow-up failed", { message: err.message });
+      }
+      continue;
+    }
+
     if (!photoFileId) {
       try {
         await telegramSendMessage(
           chatId,
-          "📷 Please send a photo with caption (title or full article).",
+          "📷 Send a photo first, then the full article as a text message (multi-line OK).",
           messageId
         );
       } catch {
@@ -216,20 +379,10 @@ export async function ingestTelegramEditorMessages(supabase, log = () => {}) {
       continue;
     }
 
-    const bodyText = caption || text;
-    if (!bodyText) {
-      try {
-        await telegramSendMessage(
-          chatId,
-          "✏️ Add a caption: news title (or full article text).",
-          messageId
-        );
-      } catch {
-        /* ignore */
-      }
-      ignored += 1;
-      continue;
-    }
+    // New PHOTO submission
+    const bodyText = caption || "";
+    const readyNow = isSubstantialEditorBody(bodyText);
+    const status = readyNow ? "pending" : "draft";
 
     const row = {
       update_id: updateId,
@@ -239,8 +392,8 @@ export async function ingestTelegramEditorMessages(supabase, log = () => {}) {
       message_id: messageId,
       photo_file_id: photoFileId,
       caption: caption || null,
-      text_body: bodyText,
-      status: "pending"
+      text_body: bodyText || null,
+      status
     };
 
     const { error } = await supabase.from("telegram_inbox").upsert(row, {
@@ -268,11 +421,24 @@ export async function ingestTelegramEditorMessages(supabase, log = () => {}) {
 
     accepted += 1;
     try {
-      await telegramSendMessage(
-        chatId,
-        "✅ Received — publishing to website + Facebook now (or next run ~5 min).",
-        messageId
-      );
+      if (readyNow) {
+        await telegramSendMessage(
+          chatId,
+          "✅ Received (photo + caption) — publishing to website + Facebook (~5 min).",
+          messageId
+        );
+      } else {
+        await telegramSendMessage(
+          chatId,
+          [
+            "✅ Photo saved as draft.",
+            "Now send the FULL article as a TEXT message (multi-line OK).",
+            "You can send several text messages — they append.",
+            "/done when finished · /cancel to drop"
+          ].join("\n"),
+          messageId
+        );
+      }
     } catch (err) {
       log("warn", "Telegram ack reply failed", { message: err.message });
     }

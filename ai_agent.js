@@ -231,7 +231,8 @@ export function isValidAiResult(result) {
 }
 
 function buildUserPrompt({ title, rawContent, description }) {
-  const sourceText = (rawContent || description || "").trim().slice(0, 5000);
+  // Editor Telegram multi-line bodies can be long (up to ~4k per message, often appended).
+  const sourceText = (rawContent || description || "").trim().slice(0, 12000);
 
   return `Produce a complete Urdu news package for this story. Follow the system rules and JSON schema exactly.
 
